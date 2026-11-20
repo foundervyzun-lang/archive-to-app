@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1795188113743,
+      "tag": "0000_vyzun_core_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795188134842,
+      "tag": "0001_vyzun_function_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795188234118,
+      "tag": "0002_vyzun_creator_economy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795188256753,
+      "tag": "0003_secret_sender_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795188282225,
+      "tag": "0004_public_feed_read_without_staff_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795188313267,
+      "tag": "0005_reel_publishing_privacy_and_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795188331615,
+      "tag": "0006_harden_edit_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795188357339,
+      "tag": "0007_private_reaction_lists",
+      "breakpoints": true
+    }
+  ]
+}
