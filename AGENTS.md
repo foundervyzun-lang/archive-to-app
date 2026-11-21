@@ -48,3 +48,4 @@ use the editor.
 - Account deletion runs only through the authenticated `deleteMyAccount` server function, which deletes the caller's own auth user (app rows cascade) — clients can never delete other users.
 - Like totals are read through the `reel_like_counts` database function; reaction and follow rows are visible only to their owner — prevents exposing who liked or followed whom.
 - Chat profile pictures render through `ChatAvatar`, which mirrors the Profile picture's squircle frame — keeps chats and profiles visually identical.
+- The app keeps its own managed Cloud backend: never repoint auth, storage or server functions at an externally supplied Supabase URL or publishable key — those services need private server access a publishable key cannot provide.
