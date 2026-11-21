@@ -1,14 +1,15 @@
 [
- {"capability":"code","source":"vyzun-aura-main.zip (TanStack Start, same Lovable template)","outcome":"migrate","status":"in_progress","next_action":"copy src, public, db, drizzle, config; merge dependencies keeping target TanStack pins"},
- {"capability":"schema","source":"drizzle/migrations 0000-0007 (Lovable Cloud Postgres)","outcome":"migrate","status":"pending","next_action":"enable Lovable Cloud and apply all 8 migrations"},
- {"capability":"records","source":"previous Lovable Cloud database (no export attached)","outcome":"migrate","status":"pending","next_action":"request CSV/JSON table exports after preview"},
- {"capability":"auth identities","source":"previous Lovable Cloud auth users (no export attached)","outcome":"migrate","status":"pending","next_action":"request user export (ids, emails) after preview"},
- {"capability":"authorization","source":"RLS policies + user_roles in migrations","outcome":"migrate","status":"pending","next_action":"applied with schema"},
- {"capability":"google sign-in","source":"@lovable.dev/cloud-auth-js broker","outcome":"migrate","status":"pending","next_action":"configure Google provider on new Cloud"},
- {"capability":"storage file bytes","source":"reel-media bucket policies (migration 0005)","outcome":"migrate","status":"pending","next_action":"create reel-media bucket; file bytes need export from old project"},
- {"capability":"ai","source":"src/lib/ai + companion/message-safety/reel-review server functions (Lovable AI)","outcome":"migrate","status":"pending","next_action":"verify after Cloud enabled"},
+ {"capability":"code","source":"vyzun-aura-main.zip (TanStack Start, same Lovable template)","outcome":"migrate","status":"verified","next_action":"none; typecheck clean, 42 tests pass, all screens load"},
+ {"capability":"schema","source":"drizzle/migrations 0000-0007","outcome":"migrate","status":"verified","next_action":"none; all 8 migrations applied byte-for-byte, generated types match source"},
+ {"capability":"records","source":"previous Lovable Cloud database (no export attached)","outcome":"migrate","status":"pending","next_action":"user to provide CSV/JSON table exports"},
+ {"capability":"auth identities","source":"previous Lovable Cloud auth users (no export attached)","outcome":"migrate","status":"pending","next_action":"user to provide users export (ids, emails)"},
+ {"capability":"authorization","source":"RLS policies + user_roles in migrations","outcome":"migrate","status":"verified","next_action":"none; signup trigger created profile, preferences and user role"},
+ {"capability":"google sign-in","source":"@lovable.dev/cloud-auth-js broker","outcome":"migrate","status":"implemented","next_action":"Google provider enabled; interactive Google login not exercised by agent"},
+ {"capability":"phone sign-in","source":"supabase.auth.signInWithOtp (Onboarding)","outcome":"migrate","status":"pending","next_action":"code preserved; SMS sending must be configured in Auth settings before phone codes deliver"},
+ {"capability":"storage file bytes","source":"reel-media private bucket","outcome":"migrate","status":"pending","next_action":"bucket + policies created; existing reel files need export from old project"},
+ {"capability":"ai","source":"companion / message-safety / reel-review server functions","outcome":"migrate","status":"verified","next_action":"none; VYZUN AI guide answered a signed-in question"},
  {"capability":"payments","source":"none integrated (UI offers only)","outcome":"not_present","status":"accepted","next_action":"none"},
- {"capability":"public endpoints / webhooks / schedules","source":"cron-auth helper only; no api routes detected","outcome":"migrate","status":"pending","next_action":"confirm no server routes or cron jobs"},
- {"capability":"secrets","source":"LOVABLE_API_KEY (provided by Cloud)","outcome":"migrate","status":"pending","next_action":"none beyond Cloud enable"},
- {"capability":"verification","source":"vitest suites in src/test + browser check","outcome":"migrate","status":"pending","next_action":"run tests and preview check"}
+ {"capability":"public endpoints / webhooks / schedules","source":"none present (no api routes or cron jobs)","outcome":"not_present","status":"accepted","next_action":"none"},
+ {"capability":"secrets","source":"LOVABLE_API_KEY","outcome":"migrate","status":"verified","next_action":"none; provided by Cloud"},
+ {"capability":"verification","source":"vitest + browser","outcome":"migrate","status":"verified","next_action":"signed-in profile save and AI reply checked; imported-user checks wait on exports"}
 ]
