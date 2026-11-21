@@ -18,7 +18,7 @@ export const GUIDE_ANSWERS: Record<(typeof GUIDE_STARTERS)[number], GuideAnswer>
     actions: ["scan"],
   },
   "How to pin on Campus Map?": {
-    text: "Go to Secrets → Campus Map and tap \"Pin Yours - $5\" to drop your glowing pin on campus. Add a VIP Halo ($4.99/mo) to make your pin stand out, or try a Loot Box ($1.99) for a surprise.",
+    text: "Go to Secrets → Campus Map, tap \"Pin Yours\", then tap any spot to drop your glowing pin with an emoji and a short note. It stays live for 24 hours and everyone sees it instantly. Add a VIP Halo ($4.99/mo) to make your pin stand out.",
     actions: ["map", "halo"],
   },
 };
@@ -28,9 +28,11 @@ export const GUIDE_FACTS = [
   "Tabs: SCAN, SECRETS, REELS, PROFILE.",
   "Scan: live face scan creates a 3D Aura Card with an Aura Score from 40 to 99, rarity, 4 stat gauges, a 4-colour palette and an AI vibe quote. A $2.99 Boost is offered on the card. The QR button in the Scan header scans friends' VYZUN QR codes or shows your own.",
   "Crush: the Double-Blind Crush card only matches when both people pick each other; '$4.99 · Reveal Identity & Instant Chat' unlocks a mutual match.",
-  "Secrets: an Anonymous Inbox with your link vyzun.app/ask/@username; secrets burn after 24 hours; every secret is AI-moderated and can be reported or the sender blocked.",
-  "Campus Map: 'Pin Yours - $5', 'Loot Box - $1.99', VIP Halo $4.99/mo and an Inter-Campus Battle Pass for $1.99.",
+  "Secrets: an Anonymous Inbox with your share link /ask/username; secrets disappear from the inbox after 24 hours; every secret is AI-moderated and can be reported or the sender blocked.",
+  "Campus Map: 'Pin Yours' drops one free glowing pin (emoji + short note) for 24 hours, visible live to everyone; 'Loot Box - $1.99', VIP Halo $4.99/mo and an Inter-Campus Battle Pass for $1.99 are paid offers that activate only after verified payment.",
   "Reels: For You, Vibe With and Trending feeds; double-tap to like; the + button opens the Reel Creator Studio with camera, timer, music, filters, text and stickers; privacy can be Public, Secret Drop or Friends Only.",
-  "Profile: Trophy Cabinet badges; the Settings gear holds the VYZUN Platinum Pass and Creator Dashboard.",
+  "Profile: tap Edit Profile to change your name, username, bio and profile picture; Trophy Cabinet badges; VYZUN Platinum Pass and Creator Dashboard banners. Messages: open someone's profile and tap Message to start a private 1:1 chat that updates live.",
+  "Reels: tap the comment bubble to read and post comments instantly.",
+  "Sign-in: email and password or Google; guest mode keeps data on the device only.",
   "Safety and help: report or block from any message menu; support email vyzun.global@gmail.com.",
 ].join("\n");

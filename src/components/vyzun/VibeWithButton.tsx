@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Check, Loader2, Plus } from "lucide-react";
 import { useVyzun } from "@/lib/vyzun-store";
+import { useVyzunSession } from "@/hooks/use-vyzun-session";
+import { usePublicProfile, useVibeState } from "@/lib/social";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,6 +10,7 @@ import { cn } from "@/lib/utils";
  * Default: "+ Vibe With" (cyan → purple → pink gradient)
  * Active: "Vibing"  ·  Removing: "Unvibing"
  * VYZUN terminology: Vibers = followers, Vibing = following.
+ * Signed in: real Cloud connection with an instant (optimistic) toggle. Guests: device-only list.
  */
 export function VibeWithButton({
   username,
@@ -17,41 +20,36 @@ export function VibeWithButton({
   className?: string;
 }) {
   const { state, update } = useVyzun();
-  const [busy, setBusy] = useState<null | "vibing" | "unvibing">(null);
-  const isVibing = state.vibingWith.includes(username);
+  const { session } = useVyzunSession();
+  const target = usePublicProfile(session ? username : undefined);
+  const live = useVibeState(session?.user.id, target.data?.id);
+  const [error, setError] = useState<string | null>(null);
+  const isLive = !!session && !!target.data;
+  const isVibing = isLive ? live.vibing : state.vibingWith.includes(username);
+  const busy = isLive && live.toggle.isPending;
 
   function toggle() {
-    if (busy) return;
-    if (isVibing) {
-      setBusy("unvibing");
-      window.setTimeout(() => {
-        update((s) => ({
-          vibingWith: s.vibingWith.filter((u) => u !== username),
-          profile: { ...s.profile, vibing: Math.max(0, s.profile.vibing - 1) },
-        }));
-        setBusy(null);
-      }, 350);
+    setError(null);
+    if (isLive) {
+      live.toggle.mutate(!isVibing, { onError: () => setError("Couldn't update. Try again.") });
       return;
     }
-    setBusy("vibing");
-    window.setTimeout(() => {
-      update((s) => ({
-        vibingWith: [...s.vibingWith, username],
-        profile: { ...s.profile, vibing: s.profile.vibing + 1 },
-      }));
-      setBusy(null);
-    }, 350);
+    if (session && target.isSuccess && !target.data) { setError("This person isn't on VYZUN yet."); return; }
+    update((s) => ({
+      vibingWith: isVibing ? s.vibingWith.filter((u) => u !== username) : [...s.vibingWith, username],
+    }));
   }
 
-  const label = busy === "unvibing" ? "Unvibing" : busy === "vibing" ? "Vibing" : isVibing ? "Vibing" : "Vibe With";
+  const label = isVibing ? "Vibing" : "Vibe With";
 
   return (
     <button
       onClick={toggle}
       aria-pressed={isVibing}
+      title={error ?? undefined}
       className={cn(
         "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold tap active:tap-active",
-        isVibing && !busy
+        isVibing
           ? "border border-glass-border text-foreground"
           : "bg-gradient-vyzun text-primary-foreground",
         className,
@@ -64,7 +62,7 @@ export function VibeWithButton({
       ) : (
         <Plus className="h-4 w-4 shrink-0" />
       )}
-      <span className="truncate">{label}</span>
+      <span className="truncate">{error ?? label}</span>
     </button>
   );
 }

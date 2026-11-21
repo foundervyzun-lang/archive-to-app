@@ -7,6 +7,6 @@ describe("VYZUN AI onboarding guide", () => {
   });
   it("points Campus Map pinning to the map and VIP Halo actions", () => {
     expect(GUIDE_ANSWERS["How to pin on Campus Map?"].actions).toEqual(["map", "halo"]);
-    expect(GUIDE_ANSWERS["How to pin on Campus Map?"].text).toContain("Pin Yours - $5");
+    expect(GUIDE_ANSWERS["How to pin on Campus Map?"].text).toContain("Pin Yours");
   });
 });

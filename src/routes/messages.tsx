@@ -3,6 +3,8 @@ import { ArrowLeft } from "lucide-react";
 import { MessagesView } from "@/components/vyzun/MessagesView";
 
 export const Route = createFileRoute("/messages")({
+  validateSearch: (search: Record<string, unknown>): { to?: string } =>
+    typeof search['to'] === "string" && /^@?[a-z0-9._]{2,30}$/i.test(search['to']) ? { to: search['to'].replace(/^@/, "").toLowerCase() } : {},
   head: () => ({ meta: [
     { title: "Messages & VYZUN AI — VYZUN" },
     { name: "description", content: "Your private chats and VYZUN creative AI companion." },
@@ -12,5 +14,6 @@ export const Route = createFileRoute("/messages")({
   ] }), component: MessagesPage,
 });
 function MessagesPage() {
-  return <div className="min-h-dvh pb-28"><header className="sticky top-0 z-30 flex items-center gap-3 bg-background/80 px-5 py-4 backdrop-blur-md"><Link to="/secrets" aria-label="Back to Secrets"><ArrowLeft className="h-5 w-5" /></Link><h1 className="font-display text-xl font-semibold">Messages</h1></header><main className="mx-auto max-w-lg px-5 py-4"><MessagesView /></main></div>;
+  const { to } = Route.useSearch();
+  return <div className="min-h-dvh pb-28"><header className="sticky top-0 z-30 flex items-center gap-3 bg-background/80 px-5 py-4 backdrop-blur-md"><Link to="/secrets" aria-label="Back to Secrets"><ArrowLeft className="h-5 w-5" /></Link><h1 className="font-display text-xl font-semibold">Messages</h1></header><main className="mx-auto max-w-lg px-5 py-4"><MessagesView key={to ?? "all"} {...(to ? { startWith: to } : {})} /></main></div>;
 }

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   BadgeCheck,
@@ -25,10 +25,14 @@ import { QRCodeSVG } from "qrcode.react";
 import { ActionDialog } from "@/components/vyzun/ActionDialog";
 import { secretDropLink } from "@/lib/vyzun-links";
 import { cn } from "@/lib/utils";
+import { useVyzunSession } from "@/hooks/use-vyzun-session";
+import { usePublicProfile } from "@/lib/social";
+import { useCreatorReels } from "@/lib/reel-feed";
 
 export const Route = createFileRoute("/profile")({
   validateSearch: (search: Record<string, unknown>) => ({
     u: typeof search['u'] === "string" && search['u'].trim() ? String(search['u']).trim().slice(0, 30) : undefined,
+    ...(search['settings'] === "1" || search['settings'] === 1 ? { settings: "1" as const } : {}),
   }),
   head: () => ({
     meta: [
@@ -52,20 +56,28 @@ export const Route = createFileRoute("/profile")({
 
 function ProfilePage() {
   const { state } = useVyzun();
-  const { u } = Route.useSearch();
+  const { u, settings: openSettings } = Route.useSearch();
   const tr = useT();
+  const navigate = useNavigate();
+  const { session, profile: cloud } = useVyzunSession();
   const [tab, setTab] = useState<"posts" | "reels" | "aura">("posts");
-  const [sheet, setSheet] = useState<null | "prime" | "creator" | "settings">(null);
+  const [sheet, setSheet] = useState<null | "prime" | "creator" | "settings">(openSettings ? "settings" : null);
+  useEffect(() => { if (openSettings) setSheet("settings"); }, [openSettings]);
   const [studioOpen, setStudioOpen] = useState(false);
   const [paid, setPaid] = useState<PaidAction | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrLink, setQrLink] = useState("");
   const [qrNotice, setQrNotice] = useState<string | null>(null);
-  useEffect(() => { setQrLink(secretDropLink(window.location.origin, u ?? state.profile.username)); }, [state.profile.username, u]);
+  useEffect(() => { setQrLink(secretDropLink(window.location.origin, u ?? cloud?.username ?? state.profile.username)); }, [state.profile.username, cloud?.username, u]);
   const p = state.profile;
-  const isSelf = !u || u.toLowerCase() === p.username.toLowerCase();
-  const viewedName = isSelf ? p.displayName : (u ?? p.username);
-  const viewedHandle = isSelf ? p.username : (u ?? p.username);
+  const myHandle = cloud?.username ?? p.username;
+  const isSelf = !u || u.toLowerCase() === myHandle.toLowerCase();
+  const other = usePublicProfile(isSelf ? undefined : u);
+  const viewed = isSelf ? cloud : (other.data ?? null);
+  const viewedName = viewed?.display_name || (isSelf ? p.displayName : (u ?? p.username));
+  const viewedHandle = viewed?.username ?? (isSelf ? myHandle : (u ?? p.username));
+  const viewedBio = viewed?.bio ?? (isSelf ? p.bio : "");
+  const reels = useCreatorReels(viewed?.id, isSelf && !!session);
 
   return (
     <div className="pb-28">
@@ -77,22 +89,22 @@ function ProfilePage() {
         )}
         <div className="mt-2 flex items-center gap-4">
           <div className="relative">
-            <span className="profile-squircle grid h-20 w-20 place-items-center rounded-3xl border-2 border-cyan bg-gradient-vyzun text-2xl font-bold text-primary-foreground">{viewedHandle[0]?.toUpperCase()}</span>
+            <span className="profile-squircle grid h-20 w-20 place-items-center overflow-hidden rounded-3xl border-2 border-cyan bg-gradient-vyzun text-2xl font-bold text-primary-foreground">{viewed?.avatar_url ? <img src={viewed.avatar_url} alt={`@${viewedHandle}`} className="h-full w-full object-cover" /> : viewedHandle[0]?.toUpperCase()}</span>
           </div>
           <div className="min-w-0">
             <h1 className="flex items-center gap-1.5 truncate text-xl font-semibold">
               {viewedName}
-              {isSelf && p.verified && <BadgeCheck className="h-5 w-5 shrink-0 text-cyan" />}
+              {(viewed ? viewed.is_verified : isSelf && p.verified) && <BadgeCheck className="h-5 w-5 shrink-0 text-cyan" />}
             </h1>
             <p className="text-sm text-muted-foreground">@{viewedHandle}</p>
-            {isSelf && <p className="mt-1 text-sm">{p.bio}</p>}
+            {viewedBio && <p className="mt-1 text-sm">{viewedBio}</p>}
           </div>
         </div>
 
         <div className="mt-5 grid grid-cols-3 gap-3 text-center">
           {[
-            { label: tr("profile.vibers"), value: isSelf ? p.vibers : "—" },
-            { label: tr("profile.vibing"), value: isSelf ? p.vibing : "—" },
+            { label: tr("profile.vibers"), value: viewed ? viewed.vibers_count : isSelf ? p.vibers : "—" },
+            { label: tr("profile.vibing"), value: viewed ? viewed.vibing_count : isSelf ? p.vibing : "—" },
             { label: tr("profile.auraCards"), value: isSelf ? state.auraCards.length : "—" },
           ].map((s) => (
             <div key={s.label} className="glass-card py-3">
@@ -110,10 +122,10 @@ function ProfilePage() {
           ) : (
             <>
               <VibeWithButton username={viewedHandle} />
-              <Button asChild variant="outline" className="flex min-w-0 flex-1"><Link to="/messages">
+              <Button variant="outline" className="flex min-w-0 flex-1" onClick={() => void navigate({ to: "/messages", search: { to: viewedHandle } })}>
                 <MessageCircle className="h-4 w-4 shrink-0" />
                 <span className="truncate">{tr("profile.message")}</span>
-              </Link></Button>
+              </Button>
             </>
           )}
           <Button variant="outline" onClick={() => setQrOpen(true)}
@@ -197,10 +209,20 @@ function ProfilePage() {
 
         {tab === "posts" && <div className="flex flex-col items-center gap-3 py-8 text-center"><MessageCircle className="h-8 w-8 text-cyan" /><p className="text-sm text-muted-foreground">{tr("profile.postsEmpty")}</p><Button asChild className="bg-gradient-vyzun"><Link to="/secrets" search={{}}>{tr("profile.openFeed")}</Link></Button></div>}
 
-        {tab === "reels" && (
+        {tab === "reels" && !!reels.data?.length && (
+          <div className="mt-4 grid grid-cols-3 gap-1.5" role="list" aria-label="Reels">
+            {reels.data.map((r) => (
+              <Link key={r.id} role="listitem" to="/reels" search={{ reel: r.id }} className="relative aspect-[9/16] overflow-hidden rounded-xl border border-glass-border bg-muted">
+                {r.thumbnail_url ? <img src={r.thumbnail_url} alt={r.caption || "Reel"} loading="lazy" className="h-full w-full object-cover" /> : r.video_url ? <video src={r.video_url} muted playsInline preload="metadata" className="h-full w-full object-cover" /> : <Video className="m-auto h-6 w-6 text-cyan" />}
+                {r.moderation_state !== "approved" && <span className="absolute inset-x-1 bottom-1 rounded-md bg-background/80 px-1 py-0.5 text-center text-[9px] font-semibold">In review</span>}
+              </Link>
+            ))}
+          </div>
+        )}
+        {tab === "reels" && !reels.data?.length && (
           <div className="mt-4 flex flex-col items-center gap-3 py-8 text-center">
             <Video className="h-8 w-8 text-cyan" /><p className="text-sm text-muted-foreground">{tr("profile.reelsEmpty")}</p>
-            <Button className="bg-gradient-vyzun" onClick={() => setStudioOpen(true)}>+ Create Reel</Button>
+            {isSelf && <Button className="bg-gradient-vyzun" onClick={() => setStudioOpen(true)}>+ Create Reel</Button>}
           </div>
         )}
 
@@ -241,14 +263,14 @@ function ProfilePage() {
 
       </main>
 
-      <ActionDialog title={qrOpen ? "Your VYZUN QR" : null} description="Share your anonymous inbox." onClose={() => setQrOpen(false)}>{qrLink && <><div className="mx-auto rounded-lg bg-primary-foreground p-4"><QRCodeSVG value={qrLink} size={200} /></div><p className="text-gradient-secret truncate text-sm font-bold">vyzun.app/ask/@{u ?? state.profile.username}</p><Button onClick={async () => { try { await navigator.clipboard.writeText(qrLink); setQrNotice("Link copied"); } catch { setQrNotice("Copy is unavailable. You can select the link above."); } }}>{tr("profile.copyLink")}</Button>{qrNotice && <p role="status" className="text-xs text-cyan">{qrNotice}</p>}</>}</ActionDialog>
+      <ActionDialog title={qrOpen ? "Your VYZUN QR" : null} description="Share your anonymous inbox." onClose={() => setQrOpen(false)}>{qrLink && <><div className="mx-auto rounded-lg bg-primary-foreground p-4"><QRCodeSVG value={qrLink} size={200} /></div><p className="text-gradient-secret truncate text-sm font-bold">vyzun.app/ask/@{u ?? cloud?.username ?? state.profile.username}</p><Button onClick={async () => { try { await navigator.clipboard.writeText(qrLink); setQrNotice("Link copied"); } catch { setQrNotice("Copy is unavailable. You can select the link above."); } }}>{tr("profile.copyLink")}</Button>{qrNotice && <p role="status" className="text-xs text-cyan">{qrNotice}</p>}</>}</ActionDialog>
       <PrimeSheet open={sheet === "prime"} onClose={() => setSheet(null)} />
       <ReelStudio open={studioOpen} onClose={() => setStudioOpen(false)} />
       <PaidActionSheet action={paid} onClose={() => setPaid(null)} />
       <CreatorDashboardSheet open={sheet === "creator"} onClose={() => setSheet(null)} />
       <SettingsSheet
         open={sheet === "settings"}
-        onClose={() => setSheet(null)}
+        onClose={() => { setSheet(null); if (openSettings) void navigate({ to: "/profile", search: { u } , replace: true }); }}
         onOpenPrime={() => setSheet("prime")}
         onOpenCreator={() => setSheet("creator")}
       />

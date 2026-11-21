@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 export type SlideReel = {
   id: string;
+  creator_id: string;
   caption: string;
   hashtags: string[];
   video_url: string | null;
@@ -17,6 +18,8 @@ type Props = {
   reel: SlideReel;
   liked: boolean;
   likeCount: string;
+  commentCount: string;
+  vibing: boolean;
   muted: boolean;
   onToggleMute: () => void;
   onLike: (force?: boolean) => void;
@@ -31,7 +34,7 @@ type Props = {
 const DOUBLE_TAP_MS = 260;
 
 /** One full-screen 9:16 reel: tap to play/pause, double-tap for a neon heart burst. */
-export function ReelSlide({ reel, liked, likeCount, muted, onToggleMute, onLike, onFire, onComments, onShare, onBattle, onVibeWith, onProducts }: Props) {
+export function ReelSlide({ reel, liked, likeCount, commentCount, vibing, muted, onToggleMute, onLike, onFire, onComments, onShare, onBattle, onVibeWith, onProducts }: Props) {
   const section = useRef<HTMLElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const lastTap = useRef(0);
@@ -42,17 +45,28 @@ export function ReelSlide({ reel, liked, likeCount, muted, onToggleMute, onLike,
   const [expanded, setExpanded] = useState(false);
   const [fire, setFire] = useState(false);
 
+  // Virtualized media: only Reels within ~2 screens mount a <video>; far ones are just posters,
+  // so long feeds stay light on memory and the next Reel is already buffered when you swipe.
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = section.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => setNear(!!entry?.isIntersecting), { rootMargin: "200% 0px 200% 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   // Autoplay only the reel that is on screen.
   useEffect(() => {
     const el = section.current, v = video.current;
-    if (!el || !v) return;
+    if (!el || !v || !near) return;
     const io = new IntersectionObserver(([entry]) => {
       if (entry?.isIntersecting && entry.intersectionRatio > 0.6) { void v.play().then(() => setPaused(false)).catch(() => setPaused(true)); }
       else { v.pause(); }
     }, { threshold: [0, 0.6, 1] });
     io.observe(el);
-    return () => io.disconnect();
-  }, []);
+    return () => { io.disconnect(); v.pause(); };
+  }, [near]);
 
   useEffect(() => () => { if (tapTimer.current) clearTimeout(tapTimer.current); }, []);
 
@@ -84,7 +98,9 @@ export function ReelSlide({ reel, liked, likeCount, muted, onToggleMute, onLike,
 
   return (
     <section ref={section} id={`reel-${reel.id}`} className="relative h-[100dvh] w-full snap-start snap-always overflow-hidden">
-      <video ref={video} src={reel.video_url ?? undefined} poster={reel.thumbnail_url ?? undefined} muted={muted} loop playsInline preload="metadata" className="absolute inset-0 h-full w-full object-cover" />
+      {near
+        ? <video ref={video} src={reel.video_url ?? undefined} poster={reel.thumbnail_url ?? undefined} muted={muted} loop playsInline preload="auto" className="absolute inset-0 h-full w-full object-cover" />
+        : reel.thumbnail_url ? <img src={reel.thumbnail_url} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" /> : null}
       <div className="rv-scrim pointer-events-none absolute inset-x-0 bottom-0 h-3/5" />
 
       <div className="absolute inset-0" onPointerUp={onStageTap} onKeyDown={e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); togglePlay(); } }} role="button" aria-label={paused ? "Play Reel" : "Pause Reel"} tabIndex={0} />
@@ -108,7 +124,7 @@ export function ReelSlide({ reel, liked, likeCount, muted, onToggleMute, onLike,
         </div>
         <div className="flex flex-col items-center gap-1">
           <button className="rv-tile rv-tile-comment" aria-label="Comments" onClick={onComments}><MessageCircle className="fill-current" /></button>
-          <span className="rv-count" aria-label="Count unavailable">—</span>
+          <span className="rv-count">{commentCount}</span>
         </div>
         <div className="flex flex-col items-center gap-1">
           <button className="rv-tile rv-tile-share" aria-label="Share" onClick={onShare}><Send /></button>
@@ -127,7 +143,7 @@ export function ReelSlide({ reel, liked, likeCount, muted, onToggleMute, onLike,
             <span className="truncate">@{reel.creator?.username ?? "creator"}</span>
             {reel.creator?.is_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-cyan" />}
           </Link>
-          <button onClick={onVibeWith} className="rv-vibe h-8 shrink-0 rounded-full px-3 text-xs font-bold">+ Vibe With</button>
+          <button onClick={onVibeWith} aria-pressed={vibing} className="rv-vibe h-8 shrink-0 rounded-full px-3 text-xs font-bold">{vibing ? "✓ Vibing" : "+ Vibe With"}</button>
         </div>
         {(reel.caption || reel.hashtags.length > 0) && (
           <button onClick={() => setExpanded(v => !v)} className="rv-text block w-full text-left text-sm" aria-expanded={expanded}>

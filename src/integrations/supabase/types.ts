@@ -346,6 +346,39 @@ export type Database = {
           },
         ]
       }
+      campus_pins: {
+        Row: {
+          created_at: string
+          emoji: string
+          expires_at: string
+          id: string
+          note: string
+          user_id: string
+          x: number
+          y: number
+        }
+        Insert: {
+          created_at?: string
+          emoji?: string
+          expires_at?: string
+          id?: string
+          note?: string
+          user_id: string
+          x: number
+          y: number
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          expires_at?: string
+          id?: string
+          note?: string
+          user_id?: string
+          x?: number
+          y?: number
+        }
+        Relationships: []
+      }
       challenge_submissions: {
         Row: {
           challenge_id: string
@@ -1086,6 +1119,38 @@ export type Database = {
         }
         Relationships: []
       }
+      reel_comments: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          reel_id: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          reel_id: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          reel_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reel_comments_reel_id_fkey"
+            columns: ["reel_id"]
+            isOneToOne: false
+            referencedRelation: "reels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reel_reactions: {
         Row: {
           created_at: string
@@ -1251,6 +1316,7 @@ export type Database = {
         Row: {
           body: string
           created_at: string
+          expires_at: string
           hint: string
           id: string
           is_hidden: boolean
@@ -1262,6 +1328,7 @@ export type Database = {
         Insert: {
           body: string
           created_at?: string
+          expires_at?: string
           hint?: string
           id?: string
           is_hidden?: boolean
@@ -1273,6 +1340,7 @@ export type Database = {
         Update: {
           body?: string
           created_at?: string
+          expires_at?: string
           hint?: string
           id?: string
           is_hidden?: boolean
@@ -1684,6 +1752,14 @@ export type Database = {
         Returns: boolean
       }
       is_staff: { Args: { _user_id: string }; Returns: boolean }
+      mark_chat_read: { Args: { _chat_id: string }; Returns: undefined }
+      reel_comment_counts: {
+        Args: { _reel_ids: string[] }
+        Returns: {
+          comments: number
+          reel_id: string
+        }[]
+      }
       reel_like_counts: {
         Args: { _reel_ids: string[] }
         Returns: {
@@ -1691,6 +1767,7 @@ export type Database = {
           reel_id: string
         }[]
       }
+      start_direct_chat: { Args: { _username: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"

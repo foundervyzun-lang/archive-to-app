@@ -71,3 +71,14 @@ export const blockReceivedSender = createServerFn({ method: "POST" }).middleware
     }
     return { ok: true };
   });
+/** Reel comments are AI safety-checked, then saved as the signed-in user (database rules still apply). */
+export const postReelComment = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid(), reelId: z.string().uuid(), body: z.string().trim().min(1).max(300) }).parse(input))
+  .handler(async ({ data, context }): Promise<{ ok: true } | { ok: false; message: string }> => {
+    let allowed: boolean;
+    try { allowed = await checkSafety(data.body); } catch { return { ok: false, message: "Safety check is unavailable right now. Your comment wasn't posted." }; }
+    if (!allowed) return { ok: false, message: "That comment breaks VYZUN's kindness rules, so it wasn't posted." };
+    const { error } = await context.supabase.from("reel_comments").insert({ id: data.id, reel_id: data.reelId, user_id: context.userId, body: data.body });
+    if (error) return { ok: false, message: "Comments aren't available on this Reel." };
+    return { ok: true };
+  });

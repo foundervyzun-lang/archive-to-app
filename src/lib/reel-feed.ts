@@ -8,7 +8,7 @@ const REEL_FIELDS = "id,creator_id,caption,hashtags,video_url,thumbnail_url,vide
 export const REEL_MEDIA_BUCKET = "reel-media";
 
 /** Uploaded reels live in a private bucket; viewers get short-lived signed links the database allows them to see. */
-async function signMedia<T extends { video_path: string | null; cover_path: string | null; video_url: string | null; thumbnail_url: string | null }>(rows: T[]): Promise<T[]> {
+export async function signMedia<T extends { video_path: string | null; cover_path: string | null; video_url: string | null; thumbnail_url: string | null }>(rows: T[]): Promise<T[]> {
   const paths = [...new Set(rows.flatMap(row => [row.video_path, row.cover_path]).filter((p): p is string => !!p))];
   if (!paths.length) return rows;
   const { data } = await supabase.storage.from(REEL_MEDIA_BUCKET).createSignedUrls(paths, 60 * 60);
@@ -45,6 +45,19 @@ export function useReelFeed(category: ReelCategory, userId?: string, own = false
       const { data: profiles, error: profileError } = ids.length ? await supabase.from("profiles").select("id,username,bio,avatar_url,is_verified").in("id", ids) : { data: [], error: null };
       if (profileError) throw profileError;
       return rows.filter(row => row.video_url).map(row => ({ ...row, creator: profiles?.find(profile => profile.id === row.creator_id) }));
+    },
+  });
+}
+
+/** A creator's Reels for their profile grid. Owners also see their own pending Reels. */
+export function useCreatorReels(creatorId?: string, own = false) {
+  return useQuery({ queryKey: ["creator-reels", creatorId, own], enabled: !!creatorId, staleTime: 30_000,
+    queryFn: async () => {
+      let query = supabase.from("reels").select(`${REEL_FIELDS},moderation_state`).eq("creator_id", creatorId ?? "");
+      if (!own) query = query.eq("is_published", true).eq("moderation_state", "approved");
+      const { data, error } = await query.neq("moderation_state", "removed").order("created_at", { ascending: false }).limit(30);
+      if (error) throw error;
+      return signMedia(data ?? []);
     },
   });
 }

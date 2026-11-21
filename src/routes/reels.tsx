@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Flame, Megaphone, MessageSquare, Plus, Search, Video, Share2, Copy, Send } from "lucide-react";
-import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Download, Flame, Megaphone, Plus, Search, Video, Share2, Copy } from "lucide-react";
+import { ReelComments } from "@/components/vyzun/ReelComments";
 import { ReelSlide } from "@/components/vyzun/ReelSlide";
 import { Button } from "@/components/ui/button";
 import { ReelStudio } from "@/components/vyzun/ReelStudio";
@@ -60,6 +60,38 @@ function useReelLikeCounts(ids: string[]) {
   });
 }
 
+/** Comment totals per reel (respecting who can see each Reel). */
+function useReelCommentCounts(ids: string[]) {
+  const key = ids.slice().sort().join(",");
+  return useQuery({
+    queryKey: ["reel-comment-counts", key],
+    enabled: ids.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("reel_comment_counts", { _reel_ids: ids });
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const row of data ?? []) counts[row.reel_id] = Number(row.comments);
+      return counts;
+    },
+  });
+}
+
+/** Which of these reels I already liked (my own reaction rows only). */
+function useMyLikes(ids: string[], userId?: string) {
+  const key = ids.slice().sort().join(",");
+  return useQuery({
+    queryKey: ["my-reel-likes", userId, key],
+    enabled: ids.length > 0 && !!userId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("reel_reactions").select("reel_id").eq("user_id", userId ?? "").in("reel_id", ids);
+      if (error) throw error;
+      return new Set((data ?? []).map(r => r.reel_id));
+    },
+  });
+}
+
 function formatCount(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return n.toLocaleString("en-US");
@@ -68,12 +100,18 @@ function formatCount(n: number) {
 
 function ReelsPage() {
   const { reel: targetReel } = Route.useSearch();
-  const { session } = useVyzunSession();
+  const { session, profile } = useVyzunSession();
   const cache = useQueryClient();
   const [category, setCategory] = useState<ReelCategory>("For You");
   const feed = useReelFeed(category, session?.user.id, false, targetReel);
   useEffect(() => { if (targetReel && feed.data?.length) document.getElementById(`reel-${targetReel}`)?.scrollIntoView({ block: "start" }); }, [targetReel, feed.data]);
-  const likeCounts = useReelLikeCounts((feed.data ?? []).map(r => r.id));
+  const ids = (feed.data ?? []).map(r => r.id);
+  const likeCounts = useReelLikeCounts(ids);
+  const commentCounts = useReelCommentCounts(ids);
+  const myLikes = useMyLikes(ids, session?.user.id);
+  const [commentDelta, setCommentDelta] = useState<Record<string, number>>({});
+  useEffect(() => { setCommentDelta({}); }, [commentCounts.dataUpdatedAt]);
+  const [vibed, setVibed] = useState<Record<string, boolean>>({});
   const [studio, setStudio] = useState(false);
   const [products, setProducts] = useState(false);
   const [paid, setPaid] = useState<PaidAction | null>(null);
@@ -86,19 +124,36 @@ function ReelsPage() {
   const [comments, setComments] = useState<string | null>(null);
   const status = (title: string, text: string) => setNotice({ title, text });
 
+  const isLiked = (id: string) => liked[id] ?? myLikes.data?.has(id) ?? false;
+
   async function like(id: string, force?: boolean) {
     if (!session) { status("Sign in", "Sign in to react to a Reel."); return; }
     if (saving[id]) return;
-    const previous = liked[id] ?? false;
+    const previous = isLiked(id);
     if (force && previous) return;
     setLiked(value => ({ ...value, [id]: !previous })); setSaving(value => ({ ...value, [id]: true }));
     try {
       const { error } = previous ? await supabase.from("reel_reactions").delete().eq("reel_id", id).eq("user_id", session.user.id) : await supabase.from("reel_reactions").upsert({ reel_id: id, user_id: session.user.id, reaction: "vibe" }, { onConflict: "reel_id,user_id" });
       if (error) throw error;
-      void cache.invalidateQueries({ queryKey: ["reel-reactions", id] });
-      void cache.invalidateQueries({ queryKey: ["reel-like-counts"] });
     } catch { setLiked(value => ({ ...value, [id]: previous })); status("Reaction not saved", "The connection failed. Your reaction was rolled back."); }
     finally { setSaving(value => ({ ...value, [id]: false })); }
+  }
+
+  /** Optimistic follow from a Reel. */
+  async function vibeWith(creatorId: string) {
+    if (!session) { status("Sign in", "Sign in to Vibe With creators."); return; }
+    if (creatorId === session.user.id) { status("That's you ✨", "This is your own Reel."); return; }
+    if (vibed[creatorId]) return;
+    setVibed(v => ({ ...v, [creatorId]: true }));
+    const { error } = await supabase.from("social_connections").upsert({ follower_id: session.user.id, following_id: creatorId, state: "active" }, { onConflict: "follower_id,following_id" });
+    if (error) { setVibed(v => ({ ...v, [creatorId]: false })); status("Not saved", "Couldn't Vibe With this creator. Try again."); return; }
+    void cache.invalidateQueries({ queryKey: ["my-profile"] });
+  }
+
+  function likeTotal(id: string) {
+    const server = likeCounts.data?.[id] ?? 0;
+    const mineOnServer = myLikes.data?.has(id) ? 1 : 0;
+    return Math.max(0, server - mineOnServer + (isLiked(id) ? 1 : 0));
   }
 
   function reelLink(id: string) {
@@ -172,8 +227,10 @@ function ReelsPage() {
           <ReelSlide
             key={item.reel.id}
             reel={item.reel}
-            liked={!!liked[item.reel.id]}
-            likeCount={likeCounts.isSuccess ? formatCount((likeCounts.data[item.reel.id] ?? 0) + (liked[item.reel.id] ? 1 : 0)) : "—"}
+            liked={isLiked(item.reel.id)}
+            likeCount={likeCounts.isSuccess ? formatCount(likeTotal(item.reel.id)) : "—"}
+            commentCount={commentCounts.isSuccess ? formatCount(Math.max(0, (commentCounts.data[item.reel.id] ?? 0) + (commentDelta[item.reel.id] ?? 0))) : "—"}
+            vibing={!!vibed[item.reel.creator_id]}
             muted={muted}
             onToggleMute={() => setMuted(m => !m)}
             onLike={force => void like(item.reel.id, force)}
@@ -181,22 +238,21 @@ function ReelsPage() {
             onComments={() => setComments(item.reel.id)}
             onShare={() => setShareTarget({ id: item.reel.id, videoUrl: item.reel.video_url })}
             onBattle={() => status("Aura Battle", "A duel needs both creators’ shared Aura Cards and consent. No match was created.")}
-            onVibeWith={() => status("Vibe With", "Open the creator’s profile to Vibe With them.")}
+            onVibeWith={() => void vibeWith(item.reel.creator_id)}
             onProducts={() => setProducts(true)}
           />
         ))}
       </main>
 
-      <Drawer open={!!comments} onOpenChange={open => { if (!open) setComments(null); }} shouldScaleBackground={false}>
-        <DrawerContent className="max-h-[70dvh]">
-          <DrawerHeader><DrawerTitle>Comments</DrawerTitle><DrawerDescription>Kind words only — every comment is moderated.</DrawerDescription></DrawerHeader>
-          <div className="flex flex-col items-center gap-2 px-6 pb-4 text-center"><MessageSquare className="h-8 w-8 text-cyan" /><p className="text-sm text-muted-foreground">No comments yet. Comments on Reels open soon.</p></div>
-          <form className="flex gap-2 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]" onSubmit={e => { e.preventDefault(); status("Comments", "Reel comments aren’t switched on yet, so nothing was posted."); }}>
-            <input aria-label="Add a comment" placeholder="Add a comment…" maxLength={300} className="min-w-0 flex-1 rounded-full border border-glass-border bg-transparent px-4 py-2 text-sm outline-none" />
-            <Button type="submit" size="icon" className="rounded-full bg-gradient-secret" aria-label="Post comment"><Send /></Button>
-          </form>
-        </DrawerContent>
-      </Drawer>
+      <ReelComments
+        reelId={comments}
+        {...(session ? { userId: session.user.id } : {})}
+        {...(profile ? { username: profile.username, avatarUrl: profile.avatar_url } : {})}
+        {...(() => { const c = reels.find(r => r.id === comments)?.creator_id; return c ? { creatorId: c } : {}; })()}
+        onClose={() => setComments(null)}
+        onSignIn={() => status("Sign in", "Sign in to join the conversation.")}
+        onDelta={(id, d) => setCommentDelta(v => ({ ...v, [id]: (v[id] ?? 0) + d }))}
+      />
 
       <Dialog open={!!shareTarget} onOpenChange={open => { if (!open) setShareTarget(null); }}>
         <DialogContent className="max-w-sm">

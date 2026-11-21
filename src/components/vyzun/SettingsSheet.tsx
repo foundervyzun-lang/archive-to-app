@@ -1,4 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Camera, Loader2 } from "lucide-react";
+import { uploadAvatar } from "@/lib/avatar";
 import {
   AtSign,
   BadgeCheck,
@@ -41,7 +44,7 @@ import {
   type Audience,
   type VyzunSettings,
 } from "@/lib/vyzun-store";
-import { useVyzunSession } from "@/hooks/use-vyzun-session";
+import { myProfileKey, useVyzunSession } from "@/hooks/use-vyzun-session";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteMyAccount, savePreferences } from "@/lib/vyzun-account.functions";
 import { useNavigate } from "@tanstack/react-router";
@@ -219,7 +222,11 @@ function Field({
 export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Props) {
   const { state, update, reset } = useVyzun();
   const t = useT();
-  const { isAuthenticated, session } = useVyzunSession();
+  const { isAuthenticated, session, profile: cloud } = useVyzunSession();
+  const cache = useQueryClient();
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [query, setQuery] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -230,6 +237,47 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
     username: state.profile.username,
     bio: state.profile.bio,
   });
+  // Signed in: edit the real Cloud profile.
+  useEffect(() => {
+    if (open && cloud) setDraft({ displayName: cloud.display_name, username: cloud.username, bio: cloud.bio });
+  }, [open, cloud]);
+
+  async function saveProfile() {
+    const displayName = draft.displayName.trim().slice(0, 40);
+    const username = draft.username.trim().replace(/^@/, "").toLowerCase();
+    const bio = draft.bio.trim().slice(0, 160);
+    if (session) {
+      if (!/^[a-z0-9._]{3,30}$/.test(username)) { setNotice("Usernames use 3–30 letters, numbers, dots or underscores."); return; }
+      setSavingProfile(true);
+      const { error } = await supabase.from("profiles").update({ display_name: displayName || username, username, bio }).eq("id", session.user.id);
+      setSavingProfile(false);
+      if (error) { setNotice(error.code === "23505" ? "That username is taken." : "Couldn't save your profile. Try again."); return; }
+      void cache.invalidateQueries({ queryKey: myProfileKey(session.user.id) });
+    }
+    update((prev) => ({
+      profile: {
+        ...prev.profile,
+        displayName: displayName || prev.profile.displayName,
+        username: username || prev.profile.username,
+        bio,
+      },
+    }));
+    setNotice(t("settings.profileSaved"));
+  }
+
+  async function changeAvatar(file?: File) {
+    if (!file || !session) return;
+    setUploading(true);
+    try {
+      const url = await uploadAvatar(session.user.id, file);
+      cache.setQueryData(myProfileKey(session.user.id), (prev: typeof cloud) => (prev ? { ...prev, avatar_url: url } : prev));
+      setNotice("Profile picture updated.");
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const s = state.settings;
 
@@ -281,7 +329,7 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
           <div className="min-w-0">
             <h2 className="truncate font-display text-lg font-semibold">{t("settings.title")}</h2>
             <p className="truncate text-[11px] text-muted-foreground">
-              @{state.profile.username} · {isAuthenticated ? t("settings.signedIn") : t("settings.guest")}
+              @{cloud?.username ?? state.profile.username} · {isAuthenticated ? t("settings.signedIn") : t("settings.guest")}
             </p>
           </div>
           <button onClick={onClose} aria-label={t("settings.close")} className="tap active:tap-active">
@@ -303,6 +351,25 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
             subtitle={t("settings.accountHint")}
             defaultOpen
           >
+            <div className="flex items-center gap-3 rounded-xl border border-glass-border p-3">
+              <span className="profile-squircle grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl border-2 border-cyan bg-gradient-vyzun text-lg font-bold text-primary-foreground">
+                {cloud?.avatar_url ? <img src={cloud.avatar_url} alt="" className="h-full w-full object-cover" /> : (draft.username[0] ?? "V").toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">Profile picture</p>
+                <p className="text-[11px] text-muted-foreground">{session ? "JPG, PNG or WebP · square crop" : "Sign in to add a profile picture"}</p>
+              </div>
+              <button
+                type="button"
+                disabled={!session || uploading}
+                onClick={() => avatarInput.current?.click()}
+                className="flex items-center gap-1.5 rounded-xl border border-glass-border px-3 py-2 text-xs font-semibold tap active:tap-active disabled:opacity-50"
+              >
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                {uploading ? "Uploading" : "Change"}
+              </button>
+              <input ref={avatarInput} type="file" accept="image/*" className="hidden" aria-label="Upload profile picture" onChange={(e) => { void changeAvatar(e.target.files?.[0]); e.target.value = ""; }} />
+            </div>
             <Field
               label={t("settings.displayName")}
               value={draft.displayName}
@@ -321,20 +388,11 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
               placeholder="Watch. Create. Vibe. Earn."
             />
             <button
-              onClick={() => {
-                update((prev) => ({
-                  profile: {
-                    ...prev.profile,
-                    displayName: draft.displayName.trim() || prev.profile.displayName,
-                    username: draft.username.trim() || prev.profile.username,
-                    bio: draft.bio,
-                  },
-                }));
-                setNotice(t("settings.profileSaved"));
-              }}
-              className="w-full rounded-xl bg-gradient-vyzun py-2.5 text-sm font-semibold text-primary-foreground tap active:tap-active"
+              onClick={() => void saveProfile()}
+              disabled={savingProfile}
+              className="w-full rounded-xl bg-gradient-vyzun py-2.5 text-sm font-semibold text-primary-foreground tap active:tap-active disabled:opacity-60"
             >
-              {t("settings.saveProfile")}
+              {savingProfile ? "Saving…" : t("settings.saveProfile")}
             </button>
 
             <Row
