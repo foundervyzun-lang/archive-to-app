@@ -46,8 +46,9 @@ function SecretsPage() {
   const { session } = useVyzunSession();
   const moderation = useServerFn(moderateMessage);
   const [posting, setPosting] = useState(false);
-  const inbox = useQuery({ queryKey: ["secret-inbox", session?.user.id], enabled: !!session, queryFn: async () => {
-    const { data, error } = await supabase.from("secret_messages").select("id,body,hint,created_at").eq("recipient_id", session?.user.id ?? "").eq("is_hidden", false).order("created_at", { ascending: false }).limit(50);
+  // Secrets auto-expire 24h after arrival (enforced by the database); refresh each minute so expired ones drop off.
+  const inbox = useQuery({ queryKey: ["secret-inbox", session?.user.id], enabled: !!session, refetchInterval: 60_000, queryFn: async () => {
+    const { data, error } = await supabase.from("secret_messages").select("id,body,hint,created_at").eq("recipient_id", session?.user.id ?? "").eq("is_hidden", false).gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }).limit(50);
     if (error) throw error;
     return (data ?? []).map(m => ({ id: m.id, body: m.body, hint: m.hint, createdAt: new Date(m.created_at).getTime() }));
   } });

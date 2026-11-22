@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 import { useVyzunSession } from "@/hooks/use-vyzun-session";
 import { usePublicProfile } from "@/lib/social";
 import { useCreatorReels } from "@/lib/reel-feed";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/profile")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -78,6 +80,15 @@ function ProfilePage() {
   const viewedHandle = viewed?.username ?? (isSelf ? myHandle : (u ?? p.username));
   const viewedBio = viewed?.bio ?? (isSelf ? p.bio : "");
   const reels = useCreatorReels(viewed?.id, isSelf && !!session);
+  const cloudCards = useQuery({
+    queryKey: ["my-aura-cards", session?.user.id], enabled: isSelf && !!session, staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("aura_cards").select("id,headline,rarity,score,percentile").eq("user_id", session?.user.id ?? "").order("created_at", { ascending: false }).limit(30);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const auraCards = isSelf && cloudCards.data?.length ? cloudCards.data : state.auraCards;
 
   return (
     <div className="pb-28">
@@ -105,7 +116,7 @@ function ProfilePage() {
           {[
             { label: tr("profile.vibers"), value: viewed ? viewed.vibers_count : isSelf ? p.vibers : "—" },
             { label: tr("profile.vibing"), value: viewed ? viewed.vibing_count : isSelf ? p.vibing : "—" },
-            { label: tr("profile.auraCards"), value: isSelf ? state.auraCards.length : "—" },
+            { label: tr("profile.auraCards"), value: isSelf ? auraCards.length : "—" },
           ].map((s) => (
             <div key={s.label} className="glass-card py-3">
               <p className="font-display text-lg font-bold">{s.value}</p>
@@ -228,10 +239,10 @@ function ProfilePage() {
 
         {tab === "aura" && (
           <div className="mt-4 space-y-2">
-            {state.auraCards.length === 0 && (
+            {auraCards.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-8 text-center"><Sparkles className="h-8 w-8 text-magenta" /><p className="text-sm text-muted-foreground">{tr("profile.noAura")}</p><Button asChild className="bg-gradient-vyzun"><Link to="/">{tr("profile.scanNow")}</Link></Button></div>
             )}
-            {state.auraCards.map((c) => (
+            {auraCards.map((c) => (
               <div key={c.id} className="glass-card flex items-center gap-3 p-4">
                 <Sparkles className="h-5 w-5 text-magenta" />
                 <div>

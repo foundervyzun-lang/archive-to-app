@@ -35,7 +35,7 @@ type Task = typeof TASKS[number]["key"];
 const ICEBREAKERS = GUIDE_STARTERS;
 
 type ChatRow = { id: string; kind: string; last_message_at: string | null };
-type ChatMsg = { id: string; body: string | null; sender_id: string; created_at: string; status?: "sending" | "failed" };
+type ChatMsg = { id: string; body: string | null; sender_id: string; created_at: string; status?: "sending" | "failed" | undefined };
 type PeopleMap = Record<string, { username: string; avatar_url: string | null }>;
 
 function ago(ts: string | null) {

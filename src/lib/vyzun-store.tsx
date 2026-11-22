@@ -68,7 +68,7 @@ export type Profile = {
   primeCreator: boolean;
   vibers: number;
   vibing: number;
-  authMode: "guest" | "google" | "phone" | null;
+  authMode: "guest" | "google" | "phone" | "email" | null;
 };
 
 export type Audience = "everyone" | "vibers" | "nobody";

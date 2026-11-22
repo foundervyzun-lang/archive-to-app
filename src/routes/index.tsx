@@ -11,6 +11,11 @@ import { cn } from "@/lib/utils";
 import { getLiveVibe } from "@/lib/aura-daily";
 import { analyzePortraitPalette, DEFAULT_PALETTE, type AuraColor } from "@/lib/aura-palette";
 import { useAuraDaily, useMorningAuraRitual } from "@/lib/use-aura-daily";
+import { useServerFn } from "@tanstack/react-start";
+import { useQueryClient } from "@tanstack/react-query";
+import { scanAura } from "@/lib/aura-scan.functions";
+import { rarityFor } from "@/lib/aura-rarity";
+import { useVyzunSession } from "@/hooks/use-vyzun-session";
 
 /** Starter card until the first face scan; the daily engine still varies it by day and activity. */
 function baseCard(username: string): AuraCard {
@@ -54,11 +59,9 @@ const MODES = [
   { key: "future", label: "scan.mode.future", icon: Wand2, blurb: "scan.blurb.future" },
 ] as const;
 
-const RARITIES = ["Common", "Rare", "Epic", "Legendary", "Mythic"];
-
 function generateAura(mode: AuraCard["mode"], photo?: string | null): AuraCard {
   const score = 40 + Math.floor(Math.random() * 60);
-  const rarity = RARITIES[Math.min(RARITIES.length - 1, Math.floor(score / 21))];
+  const rarity = rarityFor(score);
   const copy: Record<AuraCard["mode"], { headline: string; lines: string[] }> = {
     secrets: {
       headline: "Quiet Storm Aura",
@@ -89,7 +92,7 @@ function generateAura(mode: AuraCard["mode"], photo?: string | null): AuraCard {
     id: crypto.randomUUID(),
     mode,
     score,
-    rarity: rarity ?? "Rare",
+    rarity,
     percentile: Math.max(1, 100 - score),
     createdAt: Date.now(),
     photo: photo ?? null,
@@ -100,6 +103,9 @@ function generateAura(mode: AuraCard["mode"], photo?: string | null): AuraCard {
 function ScanPage() {
   const { state, update } = useVyzun();
   const t = useT();
+  const { session } = useVyzunSession();
+  const aiScan = useServerFn(scanAura);
+  const cache = useQueryClient();
   const [mode, setMode] = useState<AuraCard["mode"]>("secrets");
   const [scanning, setScanning] = useState(false);
   const [card, setCard] = useState<AuraCard | null>(null);
@@ -158,11 +164,12 @@ function ScanPage() {
       const canvas = document.createElement("canvas");
       const size = Math.min(video.videoWidth, video.videoHeight);
       if (!size) throw new Error("No camera frame");
-      canvas.width = size; canvas.height = size;
+      const out = Math.min(size, 640); // small, fast upload for the AI reading
+      canvas.width = out; canvas.height = out;
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("No image context");
-      ctx.drawImage(video, (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size, 0, 0, size, size);
-      const shot = canvas.toDataURL("image/jpeg", 0.9);
+      ctx.drawImage(video, (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size, 0, 0, out, out);
+      const shot = canvas.toDataURL("image/jpeg", 0.85);
       setPhoto(shot);
       runScan(shot);
     } catch (error) {
@@ -175,9 +182,33 @@ function ScanPage() {
     }
   }
 
+  function showCard(next: AuraCard) {
+    setCard(next);
+    setResultOpen(true);
+    daily.markOpened();
+    setScanning(false);
+    update((s) => ({
+      auraCards: [next, ...s.auraCards].slice(0, 30),
+      scans: [{ id: next.id, mode: next.mode, createdAt: next.createdAt }, ...s.scans].slice(0, 50),
+    }));
+  }
+
   function runScan(nextPhoto?: string | null) {
     const usePhoto = nextPhoto === undefined ? photo : nextPhoto;
     setScanning(true);
+    // Signed in: real AI reading of the selfie, saved to the account (the photo itself is never stored).
+    if (session && usePhoto) {
+      const scanMode = mode;
+      void aiScan({ data: { mode: scanMode, photo: usePhoto } })
+        .then((res) => {
+          if (!mountedRef.current) return;
+          if (!res.ok) { setScanning(false); setCameraError(t("scan.aiFailed")); return; }
+          void cache.invalidateQueries({ queryKey: ["my-aura-cards"] });
+          showCard({ ...res.card, photo: usePhoto });
+        })
+        .catch(() => { if (mountedRef.current) { setScanning(false); setCameraError(t("scan.aiFailed")); } });
+      return;
+    }
     scanTimerRef.current = window.setTimeout(() => {
       if (!mountedRef.current) return;
       const next = generateAura(mode, usePhoto);

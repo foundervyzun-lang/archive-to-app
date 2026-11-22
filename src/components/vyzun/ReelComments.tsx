@@ -8,7 +8,7 @@ import { ChatAvatar } from "@/components/vyzun/ChatAvatar";
 import { supabase } from "@/integrations/supabase/client";
 import { postReelComment } from "@/lib/message-safety.functions";
 
-type Comment = { id: string; body: string; user_id: string; created_at: string; username?: string; avatar_url?: string | null; status?: "sending" };
+type Comment = { id: string; body: string; user_id: string; created_at: string; username?: string | undefined; avatar_url?: string | null | undefined; status?: "sending" | undefined };
 
 function ago(ts: string) {
   const s = Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 1000));

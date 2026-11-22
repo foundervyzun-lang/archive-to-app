@@ -415,7 +415,11 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
                   : "Upgrade guest to a full account"
               }
               right={<AtSign className="h-4 w-4 opacity-60" />}
-              onClick={() => setNotice(isAuthenticated ? "Google and phone sync are managed from your account." : "Sign in from onboarding to keep your data across devices.")}
+              onClick={() => {
+                if (isAuthenticated) { setNotice("Your sign-in method is managed from your account."); return; }
+                onClose();
+                update({ onboarded: false }); // reopens sign-in (email, Google or phone)
+              }}
             />
             <Row
               icon={<Fingerprint className="h-4 w-4 text-magenta" />}

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Check, Globe, Moon, Search, Shield, Smartphone, Sun, User } from "lucide-react";
+import { Check, Globe, Mail, Moon, Search, Shield, Smartphone, Sun, User } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { LANGUAGES, useT, useVyzun, type ThemeName } from "@/lib/vyzun-store";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,7 +15,12 @@ export function Onboarding() {
   const { state, update } = useVyzun();
   const t = useT();
   const claim = useServerFn(claimProfile);
-  const [step, setStep] = useState<Step>("theme");
+  // Guests who choose "Sign in" from Settings come straight back to the sign-in step.
+  const [step, setStep] = useState<Step>(state.profile.authMode === "guest" ? "auth" : "theme");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [emailMode, setEmailMode] = useState<"signin" | "signup">("signup");
+  const [emailInfo, setEmailInfo] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
@@ -34,9 +39,42 @@ export function Onboarding() {
     setStep("language");
   }
 
-  function finish(authMode: "guest" | "google" | "phone") {
+  async function finish(authMode: "guest" | "google" | "phone" | "email") {
     update((s) => ({ profile: { ...s.profile, authMode } }));
+    if (authMode !== "guest") {
+      // Returning users keep their existing username.
+      const { data } = await supabase.auth.getSession();
+      const uid = data.session?.user.id;
+      if (uid) {
+        const { data: existing } = await supabase.from("profiles").select("username").eq("id", uid).maybeSingle();
+        if (existing?.username) setUsername(existing.username);
+      }
+    }
     setStep("profile");
+  }
+
+  async function submitEmail() {
+    const address = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) { setAuthError("Enter a valid email address."); return; }
+    if (password.length < 8) { setAuthError("Passwords need at least 8 characters."); return; }
+    setBusy(true);
+    setAuthError(null);
+    setEmailInfo(null);
+    try {
+      if (emailMode === "signin") {
+        const { error } = await supabase.auth.signInWithPassword({ email: address, password });
+        if (error) { setAuthError(error.message === "Invalid login credentials" ? "Wrong email or password." : error.message); return; }
+        await finish("email");
+        return;
+      }
+      const { data, error } = await supabase.auth.signUp({ email: address, password, options: { emailRedirectTo: window.location.origin } });
+      if (error) { setAuthError(error.message); return; }
+      if (data.session) { await finish("email"); return; }
+      setEmailInfo(`Check ${address} and tap the confirmation link, then sign in here.`);
+      setEmailMode("signin");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function signInWithGoogle() {
@@ -51,7 +89,7 @@ export function Onboarding() {
         return;
       }
       if (result.redirected) return;
-      finish("google");
+      await finish("google");
     } catch {
       setAuthError("Google sign-in is unavailable right now.");
     } finally {
@@ -84,7 +122,7 @@ export function Onboarding() {
       setAuthError(error.message);
       return;
     }
-    finish("phone");
+    await finish("phone");
   }
 
   async function saveProfile() {
@@ -208,6 +246,48 @@ export function Onboarding() {
                 </span>
               </button>
 
+              <form
+                onSubmit={(e) => { e.preventDefault(); void submitEmail(); }}
+                className="glass-card space-y-3 px-5 py-4"
+              >
+                <span className="flex items-center gap-3 text-sm font-medium">
+                  <Mail className="h-5 w-5 text-magenta" /> {emailMode === "signup" ? "Create account with Email" : "Sign in with Email"}
+                </span>
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  aria-label="Email address"
+                  className="w-full rounded-xl border border-glass-border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                />
+                <input
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  autoComplete={emailMode === "signup" ? "new-password" : "current-password"}
+                  placeholder="Password (8+ characters)"
+                  aria-label="Password"
+                  className="w-full rounded-xl border border-glass-border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || !email.trim() || !password}
+                  className="w-full rounded-xl border border-glass-border py-2.5 text-sm font-semibold tap active:tap-active disabled:opacity-60"
+                >
+                  {emailMode === "signup" ? "Create account" : "Sign in"}
+                </button>
+                {emailInfo && <p role="status" className="text-xs text-cyan">{emailInfo}</p>}
+                <button
+                  type="button"
+                  onClick={() => { setEmailMode((m) => (m === "signup" ? "signin" : "signup")); setAuthError(null); }}
+                  className="w-full text-xs text-muted-foreground"
+                >
+                  {emailMode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
+                </button>
+              </form>
+
               {otpSent ? (
                 <div className="glass-card space-y-3 px-5 py-4">
                   <p className="text-sm font-medium">Enter the 6-digit code sent to {phone}</p>
@@ -266,7 +346,7 @@ export function Onboarding() {
               )}
 
               <button
-                onClick={() => finish("guest")}
+                onClick={() => void finish("guest")}
                 className="w-full rounded-xl bg-gradient-vyzun py-3 font-semibold text-primary-foreground tap active:tap-active"
               >
                 Continue as Guest
