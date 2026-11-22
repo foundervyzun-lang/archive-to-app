@@ -88,13 +88,14 @@ Store approval, complete privacy compliance and production safety certification 
 - [ ] Reels: new Reels wait for approval and there is no approval screen yet, so like/comment/Aura buttons never appear (waiting on the user's choice).
 
 ## Nov 21 — Tier-1 live production upgrade
-- [ ] Database: comments on Reels, Campus Map pins, 24h secret expiry, direct-chat starter, chat live updates, speed indexes; public picture storage.
-- [ ] Sign-in: email + password alongside Google; guest mode stays device-only (no anonymous accounts).
-- [ ] Profile: real Cloud profile shown and edited, profile picture upload.
-- [ ] Scan: AI face reading for signed-in users, scans and Aura Cards saved to the account.
-- [ ] Secrets: inbox hides secrets after 24 hours.
-- [ ] Reels: live comments with instant posting, comment counts, near-screen video loading for smooth scrolling.
-- [ ] Campus Map: real 24h pins (free — confirmed by user) with live updates.
-- [ ] Chat: start a 1:1 chat from a profile, instant text sending, live incoming messages (media stays local-only).
-- [ ] VYZUN AI: answers any question and opens screens on request ("open reels", "take me to the map").
-- [ ] Tests for the AI navigation phrases and secret expiry rule; verify signed-in end to end.
+- [x] Database: comments on Reels, Campus Map pins, 24h secret expiry, direct-chat starter, chat live updates, speed indexes; public picture storage.
+- [x] Sign-in: email + password alongside Google; guest mode stays device-only (no anonymous accounts).
+- [x] Profile: real Cloud profile shown and edited, profile picture upload.
+- [x] Scan: AI face reading for signed-in users, scans and Aura Cards saved to the account.
+- [x] Secrets: inbox hides secrets after 24 hours.
+- [x] Reels: live comments with instant posting, comment counts, near-screen video loading for smooth scrolling.
+- [x] Campus Map: real 24h pins (free — confirmed by user) with live updates.
+- [x] Chat: start a 1:1 chat from a profile, instant text sending, live incoming messages (media stays local-only).
+- [x] VYZUN AI: answers any question and opens screens on request ("open reels", "take me to the map").
+- [x] Tests for the AI navigation phrases and secret expiry rule; verify signed-in end to end.
+- [ ] Photo/voice sending in chats, chat push notifications and expired-secret cleanup job: not built yet (background jobs aren't enabled on this backend).

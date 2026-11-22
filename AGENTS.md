@@ -39,7 +39,7 @@ use the editor.
 - Reuse MessagesView in the full-screen messages route and chat sheet; never fabricate threads, delivery, calls, matches or campus totals when services are unavailable.
 - Reels use useReelFeed for approved published media; never replace unavailable inventory with fictional creators or engagement counts.
 - Keep Reels presentation colors and glow effects in global semantic tokens, and expose share and download as distinct choices so native sharing never hides saving.
-- ChatComposer keeps attachments and recordings as ephemeral local previews until authenticated encrypted and moderated delivery is activated; never persist raw media drafts or claim delivery.
+- Direct chats open only via the `start_direct_chat` database function (block and who-can-message checks); text sends optimistically with a client-generated id that realtime echoes dedupe, while ChatComposer attachments stay local previews until media delivery exists — never claim media was sent.
 - Reuse ActionDialog for contextual unavailable-action states so inactive services never produce false rewards or results.
 - Keep AI provider helpers server-only and invoke the authenticated companion function with explicit creative context; AI never receives private chat history implicitly.
 - Recover deployment-stale route chunks with one session-scoped document refresh per minute; repeated failures must remain visible and manually retryable rather than reload-looping.
@@ -49,3 +49,8 @@ use the editor.
 - Like totals are read through the `reel_like_counts` database function; reaction and follow rows are visible only to their owner — prevents exposing who liked or followed whom.
 - Chat profile pictures render through `ChatAvatar`, which mirrors the Profile picture's squircle frame — keeps chats and profiles visually identical.
 - The app keeps its own managed Cloud backend: never repoint auth, storage or server functions at an externally supplied Supabase URL or publishable key — those services need private server access a publishable key cannot provide.
+- VYZUN AI navigation goes through `src/lib/vyzun-nav.ts`: clear "take me to" phrases route locally without an AI call, and AI replies may only navigate via a trailing `[[nav:target]]` marker validated against NAV_DESTINATIONS — keeps routing instant and limited to real screens.
+- Storage buckets stay private (the workspace blocks public buckets): profile pictures use long-lived signed links saved on the profile, and reel media keeps short-lived signed links so Friends Only reels never leak.
+- Reel comments post through the AI-checked `postReelComment` server function with optimistic display; campus pins are one row per user with a database-enforced 24h window and realtime refresh — clients never set expiry.
+- Signed-in face scans go through `scanAura`, which analyses the photo in memory and saves only the resulting scan and private Aura Card; guests keep the on-device reading.
+- Shared server data (my profile, pins, comments, chat threads) lives in React Query caches so optimistic updates and realtime events patch one source of truth.
