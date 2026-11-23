@@ -85,6 +85,13 @@
       "when": 1795266097538,
       "tag": "0011_mark_chat_read",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795437347799,
+      "tag": "0012_store_safety_rate_caps",
+      "breakpoints": true
     }
   ]
 }

@@ -1740,6 +1740,7 @@ export type Database = {
     }
     Functions: {
       block_secret_sender: { Args: { _message_id: string }; Returns: undefined }
+      contains_blocked_words: { Args: { _text: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

@@ -99,3 +99,13 @@ Store approval, complete privacy compliance and production safety certification 
 - [x] VYZUN AI: answers any question and opens screens on request ("open reels", "take me to the map").
 - [x] Tests for the AI navigation phrases and secret expiry rule; verify signed-in end to end.
 - [ ] Photo/voice sending in chats, chat push notifications and expired-secret cleanup job: not built yet (background jobs aren't enabled on this backend).
+
+## Nov 23 — Store-ready production pass
+- [ ] Profile picture: works for guests (on device) and members; compressed under 300KB; updates instantly.
+- [ ] VYZUN AI replies for guests too; 1:1 chat clear sign-in path; sending verified.
+- [ ] Reel upload with live progress bar; only active + next video kept in memory.
+- [ ] Report User, Report Reel, Block User working.
+- [ ] Profanity filter on Secrets, Comments, Bio (client + server/database).
+- [ ] Spam caps (user confirmed): 30 chat msgs, 10 comments, 5 secrets, 5 reports per minute per person.
+- [ ] Delete Account + Privacy/Terms reachable in Profile Settings.
+- [ ] Missing foreign-key indexes; memoized reel slides.
