@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { BLOCKED_WORDS_MESSAGE, containsBlockedWords, safetyErrorMessage } from "@/lib/safety";
 
 async function checkSafety(body: string) {
   const key = process.env["LOVABLE_API_KEY"];
@@ -40,9 +41,10 @@ export const sendModeratedSecret = createServerFn({ method: "POST" }).middleware
     if (blockError || prefError) throw new Error("Recipient safety settings could not be checked.");
     if (restriction?.length || preferences?.who_can_send_secrets === "nobody") return { ok: false, message: "This recipient is not accepting messages." };
     if (preferences?.who_can_send_secrets === "vibers") return { ok: false, message: "This recipient accepts secrets from connected Vibers only." };
+    if (containsBlockedWords(data.body)) return { ok: false, message: BLOCKED_WORDS_MESSAGE };
     if (!await checkSafety(data.body)) return { ok: false, message: "Please keep it kind. Bullying, hate speech and threats are not allowed." };
     const { error: insertError } = await supabaseAdmin.from("secret_messages").insert({ recipient_id: target.id, sender_id: context.userId, body: data.body, hint: "Someone on VYZUN", moderation_state: "clean" });
-    if (insertError) throw new Error("Message could not be delivered. Please try again.");
+    if (insertError) { const friendly = safetyErrorMessage(insertError); if (friendly) return { ok: false, message: friendly }; throw new Error("Message could not be delivered. Please try again."); }
     return { ok: true, message: "Secret sent anonymously." };
   });
 
@@ -53,7 +55,7 @@ export const reportReceivedMessage = createServerFn({ method: "POST" }).middlewa
     const { data: message } = await context.supabase.from(table).select("id").eq("id", data.id).maybeSingle();
     if (!message) throw new Error("This message is unavailable for reporting.");
     const { error } = await context.supabase.from("reports").insert({ reporter_id: context.userId, target_kind: data.kind === "secret" ? "secret_message" : "vibe_feed", target_id: data.id, reason: "bullying_or_hate" });
-    if (error) throw new Error("Report could not be submitted. Please try again.");
+    if (error) throw new Error(safetyErrorMessage(error) ?? "Report could not be submitted. Please try again.");
     return { ok: true };
   });
 
@@ -75,10 +77,11 @@ export const blockReceivedSender = createServerFn({ method: "POST" }).middleware
 export const postReelComment = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid(), reelId: z.string().uuid(), body: z.string().trim().min(1).max(300) }).parse(input))
   .handler(async ({ data, context }): Promise<{ ok: true } | { ok: false; message: string }> => {
+    if (containsBlockedWords(data.body)) return { ok: false, message: BLOCKED_WORDS_MESSAGE };
     let allowed: boolean;
     try { allowed = await checkSafety(data.body); } catch { return { ok: false, message: "Safety check is unavailable right now. Your comment wasn't posted." }; }
     if (!allowed) return { ok: false, message: "That comment breaks VYZUN's kindness rules, so it wasn't posted." };
     const { error } = await context.supabase.from("reel_comments").insert({ id: data.id, reel_id: data.reelId, user_id: context.userId, body: data.body });
-    if (error) return { ok: false, message: "Comments aren't available on this Reel." };
+    if (error) return { ok: false, message: safetyErrorMessage(error) ?? "Comments aren't available on this Reel." };
     return { ok: true };
   });

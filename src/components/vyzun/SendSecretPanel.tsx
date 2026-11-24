@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { secretDropLink } from "@/lib/vyzun-links";
 import { useVyzunSession } from "@/hooks/use-vyzun-session";
+import { BLOCKED_WORDS_MESSAGE, containsBlockedWords } from "@/lib/safety";
 
 const schema = z.object({
   username: z.string().trim().min(2, "Enter a username").max(30).regex(/^@?[a-z0-9._]+$/i, "Invalid username"),
@@ -38,6 +39,7 @@ export function SendSecretPanel({ username, initialTo = "" }: { username: string
     const parsed = schema.safeParse({ username: to, body });
     if (!parsed.success) return setStatus(parsed.error.issues[0]?.message ?? "Check your message");
     if (!session) return setStatus("Sign in to send a secret.");
+    if (containsBlockedWords(parsed.data.body)) return setStatus(BLOCKED_WORDS_MESSAGE);
     setSending(true);
     setStatus(null);
     const name = parsed.data.username.replace(/^@/, "").toLowerCase();

@@ -68,6 +68,8 @@ export type Profile = {
   primeCreator: boolean;
   vibers: number;
   vibing: number;
+  /** Guests only: compressed picture kept on this device. Members use their Cloud profile picture. */
+  avatar?: string | null;
   authMode: "guest" | "google" | "phone" | "email" | null;
 };
 

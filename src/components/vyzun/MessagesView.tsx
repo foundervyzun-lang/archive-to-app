@@ -7,7 +7,11 @@ import { ChatAvatar } from "@/components/vyzun/ChatAvatar";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useVyzunSession } from "@/hooks/use-vyzun-session";
-import { askVyzunAI } from "@/lib/companion.functions";
+import { askVyzunAI, askVyzunGuestAI } from "@/lib/companion.functions";
+import { useVyzun } from "@/lib/vyzun-store";
+import { SafetyMenu } from "./SafetyMenu";
+import { useMyBlocks } from "@/lib/safety-actions";
+import { safetyErrorMessage } from "@/lib/safety";
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { NAV_DESTINATIONS, parseNavIntent, type NavTarget } from "@/lib/vyzun-nav";
@@ -36,7 +40,7 @@ const ICEBREAKERS = GUIDE_STARTERS;
 
 type ChatRow = { id: string; kind: string; last_message_at: string | null };
 type ChatMsg = { id: string; body: string | null; sender_id: string; created_at: string; status?: "sending" | "failed" | undefined };
-type PeopleMap = Record<string, { username: string; avatar_url: string | null }>;
+type PeopleMap = Record<string, { id: string; username: string; avatar_url: string | null }>;
 
 function ago(ts: string | null) {
   if (!ts) return "";
@@ -49,8 +53,12 @@ function ago(ts: string | null) {
 
 /** Shared full-screen and sheet content. No fabricated threads, unread counts or delivery states. */
 export function MessagesView({ startWith }: { startWith?: string } = {}) {
-  const { session } = useVyzunSession();
+  const { session, loading: sessionLoading } = useVyzunSession();
   const ask = useServerFn(askVyzunAI);
+  const askGuest = useServerFn(askVyzunGuestAI);
+  const { update } = useVyzun();
+  const blocks = useMyBlocks(session?.user.id);
+  const signIn = () => update({ onboarded: false });
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [active, setActive] = useState<string | null>(null);
@@ -86,7 +94,7 @@ export function MessagesView({ startWith }: { startWith?: string } = {}) {
       const people: PeopleMap = {};
       for (const row of participants.data ?? []) {
         const profile = profiles?.find(item => item.id === row.user_id);
-        if (profile) people[row.chat_id] = { username: profile.username, avatar_url: profile.avatar_url };
+        if (profile) people[row.chat_id] = { id: profile.id, username: profile.username, avatar_url: profile.avatar_url };
       }
       const unread: Record<string, number> = {};
       for (const row of unreadRows.data ?? []) unread[row.chat_id] = (unread[row.chat_id] ?? 0) + 1;
@@ -105,14 +113,15 @@ export function MessagesView({ startWith }: { startWith?: string } = {}) {
   // Open a chat requested from a profile ("Message" button).
   const started = useRef<string | null>(null);
   useEffect(() => {
-    if (!startWith || !session || started.current === startWith) return;
+    if (!startWith || started.current === startWith || sessionLoading) return;
+    if (!session) { setNotice(`Sign in to message @${startWith}.`); return; }
     started.current = startWith;
     void startDirectChat(startWith).then(result => {
       if ("error" in result) { setNotice(result.error); return; }
       setActive(result.chatId);
       void cache.invalidateQueries({ queryKey: ["direct-chats", session.user.id] });
     });
-  }, [startWith, session, cache]);
+  }, [startWith, session, sessionLoading, cache]);
 
   // Live delivery: one subscription; RLS only streams messages from my own chats.
   useEffect(() => {
@@ -152,6 +161,7 @@ export function MessagesView({ startWith }: { startWith?: string } = {}) {
     cache.setQueryData<ChatMsg[]>(chatKey(chatId), prev => [...(prev ?? []), optimistic]);
     const { error } = await supabase.from("chat_messages").insert({ id, chat_id: chatId, sender_id: uid, body: text });
     cache.setQueryData<ChatMsg[]>(chatKey(chatId), prev => (prev ?? []).map(m => (m.id === id ? { ...m, status: error ? "failed" : undefined } : m)));
+    setNotice(error ? (safetyErrorMessage(error) ?? "Message not sent. Check your connection and tap retry.") : null);
     if (!error) void cache.invalidateQueries({ queryKey: ["direct-chats", uid] });
     return !error;
   }
@@ -169,10 +179,11 @@ export function MessagesView({ startWith }: { startWith?: string } = {}) {
 
   const visibleChats = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const chats = threads.data?.chats ?? [];
+    const blocked = blocks.data;
+    const chats = (threads.data?.chats ?? []).filter(chat => { const id = threads.data?.people[chat.id]?.id; return !(id && blocked?.has(id)); });
     if (!query) return chats;
     return chats.filter(chat => (threads.data?.people[chat.id]?.username ?? "").toLowerCase().includes(query));
-  }, [search, threads.data]);
+  }, [search, threads.data, blocks.data]);
 
   async function send() {
     const prompt = draft.trim();
@@ -186,11 +197,13 @@ export function MessagesView({ startWith }: { startWith?: string } = {}) {
       goTo(intent);
       return;
     }
-    if (!session) { setNotice("Sign in to talk with VYZUN AI."); return; }
     setBusy(true);
     try {
-      const history = answers.slice(-4).flatMap(a => [{ role: "user" as const, content: a.prompt.slice(0, 2000) }, { role: "assistant" as const, content: a.text.slice(0, 2000) }]);
-      const result = await ask({ data: { prompt, context: task, history } });
+      // Guests use the open guide (shorter prompts and memory); members get the full assistant.
+      const limit = session ? 2000 : 600;
+      const history = answers.slice(session ? -4 : -2).flatMap(a => [{ role: "user" as const, content: a.prompt.slice(0, limit) }, { role: "assistant" as const, content: a.text.slice(0, limit) }]);
+      const payload = { data: { prompt: prompt.slice(0, limit), context: task, history } };
+      const result = session ? await ask(payload) : await askGuest(payload);
       if (result.ok) {
         setAnswers(items => [...items, { prompt, text: result.text, ...(result.navigate ? { nav: result.navigate } : {}) }]);
         setDraft("");
@@ -227,7 +240,7 @@ export function MessagesView({ startWith }: { startWith?: string } = {}) {
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats" aria-label="Search chats" maxLength={30} className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
       </label>
-      {!session && <p className="text-sm text-muted-foreground">Sign in to see your private chats.</p>}
+      {!session && <div className="flex items-center justify-between gap-3 rounded-xl border border-glass-border p-3"><p className="text-sm text-muted-foreground">Sign in to start private 1:1 chats.</p><Button size="sm" className="bg-gradient-secret shrink-0" onClick={signIn}>Sign in to chat</Button></div>}
       {threads.isLoading && <div role="status" aria-label="Loading chats" className="h-16 animate-pulse rounded-xl bg-muted" />}
       {threads.isError && <div role="alert" className="flex items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Your chats couldn’t connect.</p><Button variant="outline" onClick={() => void threads.refetch()}>Retry</Button></div>}
       {session && threads.isSuccess && visibleChats.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">{search.trim() ? "No chats match that name." : "No active chats yet."}</p>}
@@ -241,7 +254,7 @@ export function MessagesView({ startWith }: { startWith?: string } = {}) {
         </Button>;
       })}
     </> : <>
-      <div className="flex items-center justify-between gap-3"><Button variant="ghost" size="sm" onClick={() => { setActive(null); setNotice(null); }}><ArrowLeft className="h-4 w-4" />All chats</Button><h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">{active === "ai" ? <><Logo className="h-9 w-9 shrink-0 rounded-[24%] object-cover" /><span className="truncate">VYZUN AI</span></> : <><ChatAvatar username={threads.data?.people[active]?.username} avatarUrl={threads.data?.people[active]?.avatar_url} className="h-9 w-9 text-sm" /><span className="truncate">{threads.data?.people[active]?.username ? `@${threads.data.people[active]!.username}` : "Private chat"}</span></>}</h2>{active !== "ai" && <div className="flex gap-1"><Button variant="outline" size="icon" aria-label="Audio call" onClick={() => setNotice("Calling is not connected yet. No call was placed.")}><Phone className="h-4 w-4" /></Button><Button variant="outline" size="icon" aria-label="Video call" onClick={() => setNotice("Video calling is not connected yet. No call was placed.")}><Video className="h-4 w-4" /></Button></div>}</div>
+      <div className="flex items-center justify-between gap-3"><Button variant="ghost" size="sm" onClick={() => { setActive(null); setNotice(null); }}><ArrowLeft className="h-4 w-4" />All chats</Button><h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">{active === "ai" ? <><Logo className="h-9 w-9 shrink-0 rounded-[24%] object-cover" /><span className="truncate">VYZUN AI</span></> : <><ChatAvatar username={threads.data?.people[active]?.username} avatarUrl={threads.data?.people[active]?.avatar_url} className="h-9 w-9 text-sm" /><span className="truncate">{threads.data?.people[active]?.username ? `@${threads.data.people[active]!.username}` : "Private chat"}</span></>}</h2>{active !== "ai" && <div className="flex gap-1"><SafetyMenu userId={threads.data?.people[active]?.id} username={threads.data?.people[active]?.username} chatId={active} onBlocked={() => { const name = threads.data?.people[active]?.username; setActive(null); setNotice(`${name ? `@${name}` : "This person"} is blocked. They can't message you, and you won't see their Reels.`); }} /><Button variant="outline" size="icon" aria-label="Audio call" onClick={() => setNotice("Calling is not connected yet. No call was placed.")}><Phone className="h-4 w-4" /></Button><Button variant="outline" size="icon" aria-label="Video call" onClick={() => setNotice("Video calling is not connected yet. No call was placed.")}><Video className="h-4 w-4" /></Button></div>}</div>
       {active === "ai" ? <>
         <div className="chat-ambience rounded-lg border border-magenta/30 p-4"><p className="text-sm leading-relaxed">Hey, I’m VYZUN AI ✨ your Verified Vibe Guide. Ask me anything — or say “take me to the map”, “open reels” or “go to my profile” and I’ll take you there.</p><div className="mt-3 flex flex-wrap gap-2">{ICEBREAKERS.map(prompt => <Button key={prompt} size="sm" variant="outline" className="h-auto whitespace-normal rounded-full text-left text-xs" onClick={() => openAI(prompt)}>{prompt}</Button>)}</div><GuideActions actions={["map", "scan", "halo"]} onHalo={() => setPaid(VIP_HALO)} /></div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="AI task">{TASKS.map(t => <Button key={t.key} size="sm" variant={task === t.key ? "default" : "outline"} onClick={() => setTask(t.key)}>{t.label}</Button>)}</div>

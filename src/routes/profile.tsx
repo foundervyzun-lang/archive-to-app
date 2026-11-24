@@ -30,6 +30,8 @@ import { usePublicProfile } from "@/lib/social";
 import { useCreatorReels } from "@/lib/reel-feed";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { SafetyMenu } from "@/components/vyzun/SafetyMenu";
+import { useMyBlocks } from "@/lib/safety-actions";
 
 export const Route = createFileRoute("/profile")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -79,6 +81,9 @@ function ProfilePage() {
   const viewedName = viewed?.display_name || (isSelf ? p.displayName : (u ?? p.username));
   const viewedHandle = viewed?.username ?? (isSelf ? myHandle : (u ?? p.username));
   const viewedBio = viewed?.bio ?? (isSelf ? p.bio : "");
+  const viewedAvatar = viewed?.avatar_url ?? (isSelf && !session ? p.avatar ?? null : null);
+  const blocks = useMyBlocks(session?.user.id);
+  const isBlocked = !isSelf && !!viewed?.id && !!blocks.data?.has(viewed.id);
   const reels = useCreatorReels(viewed?.id, isSelf && !!session);
   const cloudCards = useQuery({
     queryKey: ["my-aura-cards", session?.user.id], enabled: isSelf && !!session, staleTime: 60_000,
@@ -100,7 +105,7 @@ function ProfilePage() {
         )}
         <div className="mt-2 flex items-center gap-4">
           <div className="relative">
-            <span className="profile-squircle grid h-20 w-20 place-items-center overflow-hidden rounded-3xl border-2 border-cyan bg-gradient-vyzun text-2xl font-bold text-primary-foreground">{viewed?.avatar_url ? <img src={viewed.avatar_url} alt={`@${viewedHandle}`} className="h-full w-full object-cover" /> : viewedHandle[0]?.toUpperCase()}</span>
+            <span className="profile-squircle grid h-20 w-20 place-items-center overflow-hidden rounded-3xl border-2 border-cyan bg-gradient-vyzun text-2xl font-bold text-primary-foreground">{viewedAvatar ? <img src={viewedAvatar} alt={`@${viewedHandle}`} className="h-full w-full object-cover" /> : viewedHandle[0]?.toUpperCase()}</span>
           </div>
           <div className="min-w-0">
             <h1 className="flex items-center gap-1.5 truncate text-xl font-semibold">
@@ -109,6 +114,7 @@ function ProfilePage() {
             </h1>
             <p className="text-sm text-muted-foreground">@{viewedHandle}</p>
             {viewedBio && <p className="mt-1 text-sm">{viewedBio}</p>}
+            {isBlocked && <p className="mt-1 text-xs text-destructive">You blocked this person. Unblock from the ⋯ menu.</p>}
           </div>
         </div>
 
@@ -132,7 +138,7 @@ function ProfilePage() {
             </Button>
           ) : (
             <>
-              <VibeWithButton username={viewedHandle} />
+              {!isBlocked && <VibeWithButton username={viewedHandle} />}
               <Button variant="outline" className="flex min-w-0 flex-1" onClick={() => void navigate({ to: "/messages", search: { to: viewedHandle } })}>
                 <MessageCircle className="h-4 w-4 shrink-0" />
                 <span className="truncate">{tr("profile.message")}</span>
@@ -145,6 +151,7 @@ function ProfilePage() {
           >
             <QrCode className="h-4 w-4" />
           </Button>
+          {!isSelf && viewed && <SafetyMenu userId={viewed.id} username={viewedHandle} triggerClassName="h-auto w-11 rounded-xl border-glass-border" />}
           {isSelf && (
             <Button variant="outline"
               onClick={() => setSheet("settings")}

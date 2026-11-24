@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadWithProgress } from "@/lib/upload";
 import { useVyzunSession } from "@/hooks/use-vyzun-session";
 import { BEATS, audioBufferToWav, renderBeat, waveformPeaks } from "@/lib/studio/beats";
 import { captureCover, renderReel, type MusicChoice, type Overlay, type Segment } from "@/lib/studio/export";
@@ -487,6 +488,7 @@ function PublishStep({ segments, filter, overlays, music, total, userId, onBack,
   const [coverAt, setCoverAt] = useState(0);
   const [cover, setCover] = useState<{ blob: Blob; url: string } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const [phase, setPhase] = useState<"render" | "upload">("render");
   const [status, setStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [published, setPublished] = useState(false);
   const [pendingReelId, setPendingReelId] = useState<string | null>(null);
@@ -523,7 +525,7 @@ function PublishStep({ segments, filter, overlays, music, total, userId, onBack,
 
   async function exportVideo() {
     abort.current = new AbortController();
-    setProgress(0); setStatus(null);
+    setPhase("render"); setProgress(0); setStatus(null);
     try { return await renderReel({ segments, filter, overlays, music, musicVolume: 0.8, onProgress: setProgress, signal: abort.current.signal }); }
     finally { setProgress(null); }
   }
@@ -542,14 +544,19 @@ function PublishStep({ segments, filter, overlays, music, total, userId, onBack,
     if (captionError) { setStatus({ tone: "error", text: captionError }); return; }
     try {
       const blob = await exportVideo();
-      setStatus({ tone: "ok", text: "Uploading…" });
+      setStatus(null);
       const id = crypto.randomUUID();
       const ext = blob.type.includes("mp4") ? "mp4" : "webm";
       const videoPath = `${userId}/${id}.${ext}`;
       const coverPath = cover ? `${userId}/${id}.jpg` : null;
-      const up = await supabase.storage.from(REEL_MEDIA_BUCKET).upload(videoPath, blob, { contentType: blob.type, upsert: false });
-      if (up.error) throw up.error;
-      if (cover && coverPath) { const c = await supabase.storage.from(REEL_MEDIA_BUCKET).upload(coverPath, cover.blob, { contentType: "image/jpeg" }); if (c.error) throw c.error; }
+      // Live progress bar while the video streams up; the small cover follows.
+      setPhase("upload"); setProgress(0);
+      abort.current = new AbortController();
+      try {
+        await uploadWithProgress(REEL_MEDIA_BUCKET, videoPath, blob, f => setProgress(f * 0.95), abort.current.signal);
+        if (cover && coverPath) { const c = await supabase.storage.from(REEL_MEDIA_BUCKET).upload(coverPath, cover.blob, { contentType: "image/jpeg" }); if (c.error) throw c.error; }
+        setProgress(1);
+      } finally { setProgress(null); }
       const { error } = await supabase.from("reels").insert({
         id, creator_id: userId, caption: caption.trim(), hashtags: extractHashtags(caption), visibility: privacy, tagged_usernames: tags,
         audio_label: music?.name ?? null, duration_seconds: Math.round(total * 100) / 100, video_path: videoPath, cover_path: coverPath, is_published: true,
@@ -627,7 +634,7 @@ function PublishStep({ segments, filter, overlays, music, total, userId, onBack,
           </div>
         </div>
 
-        {busy && <div className="space-y-1" role="status"><div className="studio-seg-rest h-2 overflow-hidden rounded-full"><div className="studio-seg h-full rounded-full" style={{ width: `${Math.round((progress ?? 0) * 100)}%` }} /></div><div className="flex justify-between text-xs"><span>Rendering your Reel… {Math.round((progress ?? 0) * 100)}%</span><button onClick={() => abort.current?.abort()} className="font-semibold text-destructive">Cancel</button></div></div>}
+        {busy && <div className="space-y-1" role="status"><div className="studio-seg-rest h-2 overflow-hidden rounded-full"><div className="studio-seg h-full rounded-full" style={{ width: `${Math.round((progress ?? 0) * 100)}%` }} /></div><div className="flex justify-between text-xs"><span>{phase === "upload" ? "Uploading your Reel…" : "Rendering your Reel…"} {Math.round((progress ?? 0) * 100)}%</span><button onClick={() => abort.current?.abort()} className="font-semibold text-destructive">Cancel</button></div></div>}
         {status && <p role={status.tone === "error" ? "alert" : "status"} className={cn("text-sm", status.tone === "error" ? "text-destructive" : "text-cyan")}>{status.text}</p>}
 
         {published ? <div className="space-y-2">{pendingReelId && status?.tone === "error" && <Button variant="outline" onClick={() => void runReview(pendingReelId)} className="h-11 w-full rounded-full">Check again</Button>}<Button variant="studioPrimary" onClick={onDone} className="h-12 w-full rounded-full text-base">Done</Button></div> : (

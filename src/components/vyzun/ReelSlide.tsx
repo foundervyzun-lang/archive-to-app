@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type PointerEvent } from "react";
+import { SafetyMenu } from "./SafetyMenu";
 import { Link } from "@tanstack/react-router";
 import { BadgeCheck, Flame, Heart, MessageCircle, Music2, Pause, Play, Send, ShoppingBag, Swords, UserRound, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,10 @@ export type SlideReel = {
   creator?: { username: string; avatar_url: string | null; is_verified: boolean } | undefined;
 };
 
+export type SlideAction = "mute" | "like" | "fire" | "comments" | "share" | "battle" | "vibe" | "products" | "active";
+/** play = on screen; preload = next Reel, buffered but paused; poster = everything else (no video in memory). */
+export type SlideMedia = "play" | "preload" | "poster";
+
 type Props = {
   reel: SlideReel;
   liked: boolean;
@@ -21,20 +26,22 @@ type Props = {
   commentCount: string;
   vibing: boolean;
   muted: boolean;
-  onToggleMute: () => void;
-  onLike: (force?: boolean) => void;
-  onFire: () => void;
-  onComments: () => void;
-  onShare: () => void;
-  onBattle: () => void;
-  onVibeWith: () => void;
-  onProducts: () => void;
+  media: SlideMedia;
+  onAction: (action: SlideAction, reel: SlideReel, force?: boolean) => void;
 };
 
 const DOUBLE_TAP_MS = 260;
 
 /** One full-screen 9:16 reel: tap to play/pause, double-tap for a neon heart burst. */
-export function ReelSlide({ reel, liked, likeCount, commentCount, vibing, muted, onToggleMute, onLike, onFire, onComments, onShare, onBattle, onVibeWith, onProducts }: Props) {
+export const ReelSlide = memo(function ReelSlide({ reel, liked, likeCount, commentCount, vibing, muted, media, onAction }: Props) {
+  const onToggleMute = () => onAction("mute", reel);
+  const onLike = (force?: boolean) => onAction("like", reel, force);
+  const onFire = () => onAction("fire", reel);
+  const onComments = () => onAction("comments", reel);
+  const onShare = () => onAction("share", reel);
+  const onBattle = () => onAction("battle", reel);
+  const onVibeWith = () => onAction("vibe", reel);
+  const onProducts = () => onAction("products", reel);
   const section = useRef<HTMLElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const lastTap = useRef(0);
@@ -45,28 +52,28 @@ export function ReelSlide({ reel, liked, likeCount, commentCount, vibing, muted,
   const [expanded, setExpanded] = useState(false);
   const [fire, setFire] = useState(false);
 
-  // Virtualized media: only Reels within ~2 screens mount a <video>; far ones are just posters,
-  // so long feeds stay light on memory and the next Reel is already buffered when you swipe.
-  const [near, setNear] = useState(false);
+  // Report which Reel is on screen; the feed then keeps only it and the next one as real videos.
+  const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = section.current;
     if (!el) return;
-    const io = new IntersectionObserver(([entry]) => setNear(!!entry?.isIntersecting), { rootMargin: "200% 0px 200% 0px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  // Autoplay only the reel that is on screen.
-  useEffect(() => {
-    const el = section.current, v = video.current;
-    if (!el || !v || !near) return;
     const io = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting && entry.intersectionRatio > 0.6) { void v.play().then(() => setPaused(false)).catch(() => setPaused(true)); }
-      else { v.pause(); }
+      const visible = !!entry?.isIntersecting && entry.intersectionRatio > 0.6;
+      setInView(visible);
+      if (visible) onAction("active", reel);
     }, { threshold: [0, 0.6, 1] });
     io.observe(el);
-    return () => { io.disconnect(); v.pause(); };
-  }, [near]);
+    return () => io.disconnect();
+  }, [onAction, reel]);
+
+  // Play only the on-screen Reel; the buffered next one waits at frame 0.
+  const shouldPlay = media === "play" && inView;
+  useEffect(() => {
+    const v = video.current;
+    if (!v) return;
+    if (shouldPlay) void v.play().then(() => setPaused(false)).catch(() => setPaused(true));
+    else v.pause();
+  }, [shouldPlay, media]);
 
   useEffect(() => () => { if (tapTimer.current) clearTimeout(tapTimer.current); }, []);
 
@@ -98,8 +105,8 @@ export function ReelSlide({ reel, liked, likeCount, commentCount, vibing, muted,
 
   return (
     <section ref={section} id={`reel-${reel.id}`} className="relative h-[100dvh] w-full snap-start snap-always overflow-hidden">
-      {near
-        ? <video ref={video} src={reel.video_url ?? undefined} poster={reel.thumbnail_url ?? undefined} muted={muted} loop playsInline preload="auto" className="absolute inset-0 h-full w-full object-cover" />
+      {media !== "poster"
+        ? <video ref={video} src={reel.video_url ?? undefined} poster={reel.thumbnail_url ?? undefined} muted={muted} loop playsInline preload="auto" disablePictureInPicture className="absolute inset-0 h-full w-full object-cover" />
         : reel.thumbnail_url ? <img src={reel.thumbnail_url} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" /> : null}
       <div className="rv-scrim pointer-events-none absolute inset-x-0 bottom-0 h-3/5" />
 
@@ -112,6 +119,8 @@ export function ReelSlide({ reel, liked, likeCount, commentCount, vibing, muted,
       <button onClick={onToggleMute} aria-label={muted ? "Turn sound on" : "Mute"} className="rv-audio absolute right-3 top-[calc(max(10px,env(safe-area-inset-top))+56px)] z-10 grid h-9 w-9 place-items-center rounded-full">
         {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
       </button>
+
+      <SafetyMenu userId={reel.creator_id} username={reel.creator?.username} reelId={reel.id} triggerClassName="rv-audio absolute right-3 top-[calc(max(10px,env(safe-area-inset-top))+102px)] z-10 h-9 w-9 rounded-full border-0" />
 
       <aside className="absolute bottom-28 right-2.5 z-10 flex flex-col items-center gap-3.5" aria-label="Reel actions">
         <div className="flex flex-col items-center gap-1">
@@ -165,4 +174,4 @@ export function ReelSlide({ reel, liked, likeCount, commentCount, vibing, muted,
       </div>
     </section>
   );
-}
+});

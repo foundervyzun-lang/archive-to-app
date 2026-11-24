@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Camera, Loader2 } from "lucide-react";
-import { uploadAvatar } from "@/lib/avatar";
+import { localAvatar, uploadAvatar } from "@/lib/avatar";
+import { BLOCKED_WORDS_MESSAGE, containsBlockedWords, safetyErrorMessage } from "@/lib/safety";
 import {
   AtSign,
   BadgeCheck,
@@ -246,12 +247,13 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
     const displayName = draft.displayName.trim().slice(0, 40);
     const username = draft.username.trim().replace(/^@/, "").toLowerCase();
     const bio = draft.bio.trim().slice(0, 160);
+    if ([displayName, username, bio].some(containsBlockedWords)) { setNotice(BLOCKED_WORDS_MESSAGE); return; }
     if (session) {
       if (!/^[a-z0-9._]{3,30}$/.test(username)) { setNotice("Usernames use 3–30 letters, numbers, dots or underscores."); return; }
       setSavingProfile(true);
       const { error } = await supabase.from("profiles").update({ display_name: displayName || username, username, bio }).eq("id", session.user.id);
       setSavingProfile(false);
-      if (error) { setNotice(error.code === "23505" ? "That username is taken." : "Couldn't save your profile. Try again."); return; }
+      if (error) { setNotice(error.code === "23505" ? "That username is taken." : safetyErrorMessage(error) ?? "Couldn't save your profile. Try again."); return; }
       void cache.invalidateQueries({ queryKey: myProfileKey(session.user.id) });
     }
     update((prev) => ({
@@ -266,12 +268,20 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
   }
 
   async function changeAvatar(file?: File) {
-    if (!file || !session) return;
+    if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadAvatar(session.user.id, file);
-      cache.setQueryData(myProfileKey(session.user.id), (prev: typeof cloud) => (prev ? { ...prev, avatar_url: url } : prev));
-      setNotice("Profile picture updated.");
+      if (session) {
+        const url = await uploadAvatar(session.user.id, file);
+        // Instant everywhere: patch the shared profile cache, no refresh needed.
+        cache.setQueryData(myProfileKey(session.user.id), (prev: typeof cloud) => (prev ? { ...prev, avatar_url: url } : prev));
+        void cache.invalidateQueries({ queryKey: ["public-profile"] });
+        setNotice("Profile picture updated.");
+      } else {
+        const url = await localAvatar(file);
+        update((prev) => ({ profile: { ...prev.profile, avatar: url } }));
+        setNotice("Profile picture updated on this device. Sign in to show it to everyone.");
+      }
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -353,15 +363,15 @@ export function SettingsSheet({ open, onClose, onOpenPrime, onOpenCreator }: Pro
           >
             <div className="flex items-center gap-3 rounded-xl border border-glass-border p-3">
               <span className="profile-squircle grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl border-2 border-cyan bg-gradient-vyzun text-lg font-bold text-primary-foreground">
-                {cloud?.avatar_url ? <img src={cloud.avatar_url} alt="" className="h-full w-full object-cover" /> : (draft.username[0] ?? "V").toUpperCase()}
+                {(cloud?.avatar_url ?? (session ? null : state.profile.avatar)) ? <img src={(cloud?.avatar_url ?? state.profile.avatar) ?? undefined} alt="" className="h-full w-full object-cover" /> : (draft.username[0] ?? "V").toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm">Profile picture</p>
-                <p className="text-[11px] text-muted-foreground">{session ? "JPG, PNG or WebP · square crop" : "Sign in to add a profile picture"}</p>
+                <p className="text-[11px] text-muted-foreground">{session ? "JPG, PNG or WebP · auto-compressed" : "Saved on this device · sign in to share it"}</p>
               </div>
               <button
                 type="button"
-                disabled={!session || uploading}
+                disabled={uploading}
                 onClick={() => avatarInput.current?.click()}
                 className="flex items-center gap-1.5 rounded-xl border border-glass-border px-3 py-2 text-xs font-semibold tap active:tap-active disabled:opacity-50"
               >

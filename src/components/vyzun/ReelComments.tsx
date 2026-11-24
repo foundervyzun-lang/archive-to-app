@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ChatAvatar } from "@/components/vyzun/ChatAvatar";
 import { supabase } from "@/integrations/supabase/client";
 import { postReelComment } from "@/lib/message-safety.functions";
+import { BLOCKED_WORDS_MESSAGE, containsBlockedWords } from "@/lib/safety";
 
 type Comment = { id: string; body: string; user_id: string; created_at: string; username?: string | undefined; avatar_url?: string | null | undefined; status?: "sending" | undefined };
 
@@ -41,6 +42,7 @@ export function ReelComments({ reelId, userId, username, avatarUrl, creatorId, o
     const body = draft.trim();
     if (!body || !reelId) return;
     if (!userId) { onSignIn(); return; }
+    if (containsBlockedWords(body)) { setError(BLOCKED_WORDS_MESSAGE); return; }
     setError(null);
     const id = crypto.randomUUID();
     const key = reelCommentsKey(reelId);

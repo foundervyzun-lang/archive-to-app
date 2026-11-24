@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Flame, Megaphone, Plus, Search, Video, Share2, Copy } from "lucide-react";
 import { ReelComments } from "@/components/vyzun/ReelComments";
-import { ReelSlide } from "@/components/vyzun/ReelSlide";
+import { ReelSlide, type SlideAction, type SlideMedia, type SlideReel } from "@/components/vyzun/ReelSlide";
+import { useMyBlocks } from "@/lib/safety-actions";
 import { Button } from "@/components/ui/button";
 import { ReelStudio } from "@/components/vyzun/ReelStudio";
 import { ReelCommerce } from "@/components/vyzun/ReelCommerce";
@@ -105,7 +106,11 @@ function ReelsPage() {
   const [category, setCategory] = useState<ReelCategory>("For You");
   const feed = useReelFeed(category, session?.user.id, false, targetReel);
   useEffect(() => { if (targetReel && feed.data?.length) document.getElementById(`reel-${targetReel}`)?.scrollIntoView({ block: "start" }); }, [targetReel, feed.data]);
-  const ids = (feed.data ?? []).map(r => r.id);
+  const blocks = useMyBlocks(session?.user.id);
+  // Blocked creators disappear from the feed immediately.
+  const reels = useMemo(() => (feed.data ?? []).filter(r => !blocks.data?.has(r.creator_id)), [feed.data, blocks.data]);
+  const ids = useMemo(() => reels.map(r => r.id), [reels]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const likeCounts = useReelLikeCounts(ids);
   const commentCounts = useReelCommentCounts(ids);
   const myLikes = useMyLikes(ids, session?.user.id);
@@ -192,7 +197,28 @@ function ReelsPage() {
     finally { setDownloading(false); }
   }
 
-  const reels = feed.data ?? [];
+  const activeIdx = Math.max(0, reels.findIndex(r => r.id === activeId));
+  const mediaFor = (id: string): SlideMedia => {
+    const i = reels.findIndex(r => r.id === id);
+    return i === activeIdx ? "play" : i === activeIdx + 1 ? "preload" : "poster";
+  };
+
+  // One stable handler for every slide, so memoized slides only re-render when their own data changes.
+  const actionRef = useRef<(action: SlideAction, reel: SlideReel, force?: boolean) => void>(() => undefined);
+  actionRef.current = (action, reel, force) => {
+    switch (action) {
+      case "active": setActiveId(reel.id); break;
+      case "mute": setMuted(m => !m); break;
+      case "like": void like(reel.id, force); break;
+      case "fire": status("Vibe fire 🔥", "Fire reactions are shown to the creator once reaction totals are live. No points were issued."); break;
+      case "comments": setComments(reel.id); break;
+      case "share": setShareTarget({ id: reel.id, videoUrl: reel.video_url }); break;
+      case "battle": status("Aura Battle", "A duel needs both creators’ shared Aura Cards and consent. No match was created."); break;
+      case "vibe": void vibeWith(reel.creator_id); break;
+      case "products": setProducts(true); break;
+    }
+  };
+  const onSlideAction = useCallback((action: SlideAction, reel: SlideReel, force?: boolean) => actionRef.current(action, reel, force), []);
 
   return (
     <div className="rv-stage fixed inset-0 flex flex-col">
@@ -232,14 +258,8 @@ function ReelsPage() {
             commentCount={commentCounts.isSuccess ? formatCount(Math.max(0, (commentCounts.data[item.reel.id] ?? 0) + (commentDelta[item.reel.id] ?? 0))) : "—"}
             vibing={!!vibed[item.reel.creator_id]}
             muted={muted}
-            onToggleMute={() => setMuted(m => !m)}
-            onLike={force => void like(item.reel.id, force)}
-            onFire={() => status("Vibe fire 🔥", "Fire reactions are shown to the creator once reaction totals are live. No points were issued.")}
-            onComments={() => setComments(item.reel.id)}
-            onShare={() => setShareTarget({ id: item.reel.id, videoUrl: item.reel.video_url })}
-            onBattle={() => status("Aura Battle", "A duel needs both creators’ shared Aura Cards and consent. No match was created.")}
-            onVibeWith={() => void vibeWith(item.reel.creator_id)}
-            onProducts={() => setProducts(true)}
+            media={mediaFor(item.reel.id)}
+            onAction={onSlideAction}
           />
         ))}
       </main>

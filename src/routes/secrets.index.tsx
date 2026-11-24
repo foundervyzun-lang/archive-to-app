@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { moderateMessage } from "@/lib/message-safety.functions";
+import { BLOCKED_WORDS_MESSAGE, containsBlockedWords, safetyErrorMessage } from "@/lib/safety";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/secrets/")({
@@ -59,9 +60,10 @@ function SecretsPage() {
   }
   async function replySecret(id: string, text: string) {
     if (!session) { setMediaError("Sign in to send a private reply."); return; }
+    if (containsBlockedWords(text)) { setMediaError(BLOCKED_WORDS_MESSAGE); return; }
     try { const safe = await moderation({ data: { body: text } }); if (!safe.allowed) { setMediaError("Please keep replies kind."); return; }
       const { error } = await supabase.from("secret_replies").insert({ message_id: id, author_id: session.user.id, body: text });
-      setMediaError(error ? "Could not send reply." : "Private reply sent.");
+      setMediaError(error ? (safetyErrorMessage(error) ?? "Could not send reply.") : "Private reply sent.");
     } catch { setMediaError("Safety checks are unavailable. Reply was not sent."); }
   }
   const [tab, setTab] = useState<"inbox" | "feed" | "map">(initialTab ?? "inbox");
@@ -108,11 +110,12 @@ function SecretsPage() {
     if (!body && !image) return;
     if (!session) { setMediaError("Sign in to publish a confession."); return; }
     if (image) { setMediaError("Photo posts need image moderation before public publishing; please post text for now."); return; }
+    if (containsBlockedWords(body)) { setMediaError(BLOCKED_WORDS_MESSAGE); return; }
     setPosting(true);
     let postId = "";
     try { const safe = await moderation({ data: { body } }); if (!safe.allowed) { setMediaError("Bullying or hate speech is prohibited."); return; }
       const { data: saved, error } = await supabase.from("vibe_feed").insert({ author_id: session.user.id, body, is_anonymous: anon, moderation_state: "clean" }).select("id").single();
-      if (error || !saved) { setMediaError("Post could not be published."); return; }
+      if (error || !saved) { setMediaError(safetyErrorMessage(error) ?? "Post could not be published."); return; }
       postId = saved.id;
     }
     catch { setMediaError("Safety checks are unavailable. Post was not published."); return; }
