@@ -101,11 +101,17 @@ Store approval, complete privacy compliance and production safety certification 
 - [ ] Photo/voice sending in chats, chat push notifications and expired-secret cleanup job: not built yet (background jobs aren't enabled on this backend).
 
 ## Nov 23 — Store-ready production pass
-- [ ] Profile picture: works for guests (on device) and members; compressed under 300KB; updates instantly.
-- [ ] VYZUN AI replies for guests too; 1:1 chat clear sign-in path; sending verified.
-- [ ] Reel upload with live progress bar; only active + next video kept in memory.
-- [ ] Report User, Report Reel, Block User working.
-- [ ] Profanity filter on Secrets, Comments, Bio (client + server/database).
-- [ ] Spam caps (user confirmed): 30 chat msgs, 10 comments, 5 secrets, 5 reports per minute per person.
-- [ ] Delete Account + Privacy/Terms reachable in Profile Settings.
-- [ ] Missing foreign-key indexes; memoized reel slides.
+- [x] Profile picture: works for guests (on device) and members; compressed under 300KB; updates instantly.
+- [x] VYZUN AI replies for guests too; 1:1 chat clear sign-in path; sending verified.
+- [x] Reel upload with live progress bar; only active + next video kept in memory.
+- [x] Report User, Report Reel, Block User working.
+- [x] Profanity filter on Secrets, Comments, Bio (client + server/database).
+- [x] Spam caps (user confirmed): 30 chat msgs, 10 comments, 5 secrets, 5 reports per minute per person.
+- [x] Delete Account + Privacy/Terms reachable in Profile Settings.
+- [x] Missing foreign-key indexes; memoized reel slides.
+
+## Nov 25 — Redesign + speed (queued)
+- [ ] Reels: compact frosted capsule action buttons in purple-pink gradient near bottom-right; play indicator 60% smaller, fades on play.
+- [ ] Reels share sheet: friends row for 1-tap DM + Instagram, TikTok, Snapchat, WhatsApp, Copy Link, Save to Gallery.
+- [ ] VYZUN AI chat: purple-pink outgoing bubbles, instant typing indicator, streamed replies.
+- [ ] Faster sign-in with clear errors; live debounced search (users, reels, tags); real-time notifications; fewer re-renders.

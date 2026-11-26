@@ -54,3 +54,8 @@ use the editor.
 - Reel comments post through the AI-checked `postReelComment` server function with optimistic display; campus pins are one row per user with a database-enforced 24h window and realtime refresh — clients never set expiry.
 - Signed-in face scans go through `scanAura`, which analyses the photo in memory and saves only the resulting scan and private Aura Card; guests keep the on-device reading.
 - Shared server data (my profile, pins, comments, chat threads) lives in React Query caches so optimistic updates and realtime events patch one source of truth.
+- Clean-language rule lives in `src/lib/safety.ts` and is mirrored by the DB `contains_blocked_words` trigger function; keep both lists identical (tested) so client and server agree.
+- Spam caps are enforced by `enforce_rate_limit` DB triggers (values chosen by the user); clients only map `rate_limited` errors via `safetyErrorMessage`.
+- Report/Block everywhere goes through `SafetyMenu` + `safety-actions.ts`; blocked creators are filtered client-side and the DB refuses chat messages between blocked people.
+- Reels: `ReelSlide` is memoized with one stable `onAction`; only the active and next slide mount a `<video>` to limit memory.
+- Large uploads use `uploadWithProgress` (signed upload link + XHR) for real progress; guests use the public `askVyzunGuestAI` with shorter limits and keep avatars on device.
