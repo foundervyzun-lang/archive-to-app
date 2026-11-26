@@ -92,6 +92,13 @@
       "when": 1795437347799,
       "tag": "0012_store_safety_rate_caps",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795651578459,
+      "tag": "0013_live_notifications_and_search",
+      "breakpoints": true
     }
   ]
 }

@@ -1769,6 +1769,18 @@ export type Database = {
         }[]
       }
       start_direct_chat: { Args: { _username: string }; Returns: string }
+      vz_actor_name: { Args: { _id: string }; Returns: string }
+      vz_notify: {
+        Args: {
+          _actor: string
+          _body: string
+          _category: string
+          _payload: Json
+          _title: string
+          _user: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
